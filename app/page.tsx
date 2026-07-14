@@ -222,6 +222,10 @@ export default function Home() {
 
     return matchesSearch && matchesCategory;
   });
+  const myCases = user
+    ? cases.filter((caseItem) => caseItem.created_by_id === user.id)
+    : [];
+  const latestMyCases = myCases.slice(0, 3);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -371,6 +375,52 @@ export default function Home() {
                   <div className="break-all border-2 border-black bg-[#E9FF70] p-2 text-xs font-black">
                     {user.email ?? 'Google User'}
                   </div>
+
+                  <div className="border-2 border-black bg-white p-3 shadow-[3px_3px_0_#111]">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <span className="text-xs font-black uppercase">
+                        Case Saya
+                      </span>
+                      <span className="border-2 border-black bg-[#3DD6FF] px-2 py-0.5 text-xs font-black">
+                        {myCases.length}
+                      </span>
+                    </div>
+
+                    {latestMyCases.length === 0 ? (
+                      <p className="text-xs font-bold text-neutral-500">
+                        Belum ada case yang kamu upload.
+                      </p>
+                    ) : (
+                      <ul className="space-y-2">
+                        {latestMyCases.map((caseItem) => (
+                          <li
+                            key={caseItem.id}
+                            className="flex items-center justify-between gap-2 border-2 border-black bg-[#FFF2C7] p-2"
+                          >
+                            <span className="min-w-0 flex-1 truncate text-xs font-black">
+                              {caseItem.title}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleEditCase(caseItem)}
+                              className="inline-flex shrink-0 items-center gap-1 border-2 border-black bg-[#3DD6FF] px-2 py-1 text-[0.68rem] font-black uppercase"
+                            >
+                              <Pencil className="h-3 w-3" />
+                              Edit
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+
+                    {myCases.length > latestMyCases.length && (
+                      <p className="mt-2 text-xs font-bold text-neutral-500">
+                        {myCases.length - latestMyCases.length} case lainnya
+                        ada di daftar bawah.
+                      </p>
+                    )}
+                  </div>
+
                   <label className="block">
                     <span className="mb-1 flex items-center gap-1 text-xs font-black uppercase">
                       <KeyRound className="h-3.5 w-3.5" />
