@@ -245,15 +245,14 @@ export default function Home() {
             <div className="max-w-3xl">
               <div className="mb-3 inline-flex items-center gap-2 border-2 border-black bg-white px-3 py-1 text-xs font-black uppercase shadow-[4px_4px_0_#111]">
                 <Sparkles className="h-3.5 w-3.5" />
-                Portal Bantuan
+                Case Tracker ALDI
               </div>
               <h1 className="text-3xl font-black uppercase leading-none tracking-normal sm:text-4xl lg:text-6xl">
-                Cari Solusi Error
+                Knowledge Base Support
               </h1>
               <p className="mt-4 max-w-2xl text-base font-bold leading-7">
-                Temukan panduan dari case yang pernah ditangani. Cari lewat
-                kategori, baca solusi cepat, atau tanyakan langsung ke AI
-                support.
+                Cari permasalahan yang pernah ditangani, lihat screenshot
+                error, lalu pakai AI support jika butuh bantuan cepat.
               </p>
             </div>
 
@@ -340,7 +339,7 @@ export default function Home() {
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 className="min-w-0 flex-1 bg-transparent text-sm font-bold outline-none placeholder:text-neutral-500"
-                placeholder="Cari: pembayaran, KRS, PMB, laporan, akun..."
+                placeholder="Cari case: pembayaran, KRS, PMB, laporan, akun..."
               />
             </label>
 
