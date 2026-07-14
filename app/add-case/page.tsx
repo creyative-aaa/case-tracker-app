@@ -276,7 +276,7 @@ export default function AddCasePage() {
         {!isConfigLoading && !hasSupabaseConfig(supabaseConfig) && (
           <div className="mb-4 border-4 border-black bg-[#FFD84D] p-4 text-sm font-black shadow-[6px_6px_0_#111]">
             Isi NEXT_PUBLIC_SUPABASE_URL dan NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
-            di .env.local agar data bisa disimpan.
+            di Cloudflare Variables, lalu redeploy agar data bisa disimpan.
           </div>
         )}
 

@@ -14,6 +14,7 @@ import {
   LogOut,
   MessageCircle,
   MessageSquareText,
+  Pencil,
   Plus,
   Search,
   Sparkles,
@@ -40,8 +41,18 @@ type CaseItem = {
   error_description: string;
   error_image_url: string | null;
   solution: string;
+  created_by_id: string | null;
   created_by_email: string | null;
   created_at: string;
+};
+
+type EditCaseForm = {
+  id: string | number;
+  title: string;
+  category: string;
+  error_description: string;
+  error_image_url: string;
+  solution: string;
 };
 
 const categoryOptions = [
@@ -94,6 +105,11 @@ export default function Home() {
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [profileMessage, setProfileMessage] = useState('');
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [editingCase, setEditingCase] = useState<EditCaseForm | null>(null);
+  const [editStatus, setEditStatus] = useState<
+    'idle' | 'saving' | 'success' | 'error'
+  >('idle');
+  const [editMessage, setEditMessage] = useState('');
   const supabase = useMemo(() => createClient(supabaseConfig), [supabaseConfig]);
 
   useEffect(() => {
@@ -181,7 +197,7 @@ export default function Home() {
       const { data } = await supabase
         .from('cases')
         .select(
-          'id,title,category,error_description,error_image_url,solution,created_by_email,created_at',
+          'id,title,category,error_description,error_image_url,solution,created_by_id,created_by_email,created_at',
         )
         .order('created_at', { ascending: false })
         .limit(30);
@@ -258,6 +274,67 @@ export default function Home() {
     localStorage.setItem('case-tracker-google-api-key', cleanedApiKey);
     setUserApiKey(cleanedApiKey);
     setProfileMessage('Gemini API key berhasil disimpan di profil browser ini.');
+  };
+
+  const handleEditCase = (caseItem: CaseItem) => {
+    setEditingCase({
+      id: caseItem.id,
+      title: caseItem.title,
+      category: caseItem.category ?? 'Lain-lain',
+      error_description: caseItem.error_description,
+      error_image_url: caseItem.error_image_url ?? '',
+      solution: caseItem.solution,
+    });
+    setEditStatus('idle');
+    setEditMessage('');
+  };
+
+  const handleUpdateCase = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!supabase || !editingCase || !user) {
+      setEditStatus('error');
+      setEditMessage('Login diperlukan untuk edit case.');
+      return;
+    }
+
+    setEditStatus('saving');
+    setEditMessage('');
+
+    const { error } = await supabase
+      .from('cases')
+      .update({
+        title: editingCase.title,
+        category: editingCase.category,
+        error_description: editingCase.error_description,
+        error_image_url: editingCase.error_image_url.trim() || null,
+        solution: editingCase.solution,
+        resolution_steps: editingCase.solution,
+      })
+      .eq('id', editingCase.id);
+
+    if (error) {
+      setEditStatus('error');
+      setEditMessage(error.message);
+      return;
+    }
+
+    setCases((currentCases) =>
+      currentCases.map((caseItem) =>
+        caseItem.id === editingCase.id
+          ? {
+              ...caseItem,
+              title: editingCase.title,
+              category: editingCase.category,
+              error_description: editingCase.error_description,
+              error_image_url: editingCase.error_image_url.trim() || null,
+              solution: editingCase.solution,
+            }
+          : caseItem,
+      ),
+    );
+    setEditStatus('success');
+    setEditMessage('Case berhasil diperbarui.');
   };
 
   return (
@@ -399,7 +476,8 @@ export default function Home() {
               {!isConfigLoading && !hasSupabaseConfig(supabaseConfig) && (
                 <p className="mb-4 border-4 border-black bg-[#FFD84D] p-3 text-sm font-bold shadow-[5px_5px_0_#111]">
                   Supabase belum dikonfigurasi. Isi NEXT_PUBLIC_SUPABASE_URL
-                  dan NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY di .env.local.
+                  dan NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY di Cloudflare
+                  Variables, lalu redeploy.
                 </p>
               )}
 
@@ -423,6 +501,7 @@ export default function Home() {
                   {filteredCases.map((c) => {
                     const category = getCategoryMeta(c.category);
                     const CategoryIcon = category.icon;
+                    const canEdit = Boolean(user && c.created_by_id === user.id);
 
                     return (
                       <li
@@ -466,6 +545,16 @@ export default function Home() {
                                 {c.category ?? 'Lain-lain'}
                               </span>
                             </span>
+                            {canEdit && (
+                              <button
+                                type="button"
+                                onClick={() => handleEditCase(c)}
+                                className="inline-flex shrink-0 items-center gap-1 border-2 border-black bg-[#3DD6FF] px-2.5 py-1 text-xs font-black uppercase shadow-[3px_3px_0_#111]"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                                Edit
+                              </button>
+                            )}
                           </div>
 
                           <h3 className="line-clamp-2 text-lg font-black leading-snug">
@@ -636,6 +725,162 @@ export default function Home() {
           </section>
         </div>
       </div>
+
+      {editingCase && (
+        <div className="fixed inset-0 z-[60] grid place-items-center bg-black/70 p-4 backdrop-blur-sm">
+          <form
+            onSubmit={handleUpdateCase}
+            className="max-h-[calc(100vh-2rem)] w-full max-w-3xl overflow-y-auto border-4 border-black bg-[#111] p-4 shadow-[6px_6px_0_#FF4D8D] sm:p-5"
+          >
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <div className="mb-2 inline-flex items-center gap-2 border-2 border-black bg-[#3DD6FF] px-3 py-1 text-xs font-black uppercase shadow-[3px_3px_0_#111]">
+                  <Pencil className="h-3.5 w-3.5" />
+                  Maintenance Case
+                </div>
+                <h2 className="text-2xl font-black uppercase leading-tight">
+                  Edit Case Milikmu
+                </h2>
+                <p className="mt-2 text-sm font-bold text-neutral-500">
+                  Kamu hanya bisa mengedit case yang kamu upload sendiri.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingCase(null)}
+                className="grid h-10 w-10 shrink-0 place-items-center border-2 border-black bg-white shadow-[3px_3px_0_#111]"
+                aria-label="Tutup edit case"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="block">
+                <span className="mb-2 block text-sm font-black uppercase">
+                  Judul Case
+                </span>
+                <input
+                  value={editingCase.title}
+                  onChange={(event) =>
+                    setEditingCase({
+                      ...editingCase,
+                      title: event.target.value,
+                    })
+                  }
+                  required
+                  className="w-full border-4 border-black bg-white p-3 text-sm font-bold outline-none"
+                />
+              </label>
+
+              <label className="block">
+                <span className="mb-2 block text-sm font-black uppercase">
+                  Kategori
+                </span>
+                <select
+                  value={editingCase.category}
+                  onChange={(event) =>
+                    setEditingCase({
+                      ...editingCase,
+                      category: event.target.value,
+                    })
+                  }
+                  className="w-full border-4 border-black bg-white p-3 text-sm font-bold outline-none"
+                >
+                  {categoryOptions
+                    .filter((category) => category !== 'Semua')
+                    .map((category) => (
+                      <option key={category} value={category}>
+                        {category}
+                      </option>
+                    ))}
+                </select>
+              </label>
+            </div>
+
+            <label className="mt-4 block">
+              <span className="mb-2 block text-sm font-black uppercase">
+                Link Gambar Error
+              </span>
+              <input
+                type="url"
+                value={editingCase.error_image_url}
+                onChange={(event) =>
+                  setEditingCase({
+                    ...editingCase,
+                    error_image_url: event.target.value,
+                  })
+                }
+                className="w-full border-4 border-black bg-white p-3 text-sm font-bold outline-none"
+                placeholder="https://..."
+              />
+            </label>
+
+            <label className="mt-4 block">
+              <span className="mb-2 block text-sm font-black uppercase">
+                Deskripsi Error
+              </span>
+              <textarea
+                value={editingCase.error_description}
+                onChange={(event) =>
+                  setEditingCase({
+                    ...editingCase,
+                    error_description: event.target.value,
+                  })
+                }
+                required
+                rows={5}
+                className="w-full resize-none border-4 border-black bg-white p-3 text-sm font-bold leading-6 outline-none"
+              />
+            </label>
+
+            <label className="mt-4 block">
+              <span className="mb-2 block text-sm font-black uppercase">
+                Solusi
+              </span>
+              <textarea
+                value={editingCase.solution}
+                onChange={(event) =>
+                  setEditingCase({
+                    ...editingCase,
+                    solution: event.target.value,
+                  })
+                }
+                required
+                rows={5}
+                className="w-full resize-none border-4 border-black bg-white p-3 text-sm font-bold leading-6 outline-none"
+              />
+            </label>
+
+            {editMessage && (
+              <div
+                className={`mt-4 border-4 border-black p-3 text-sm font-black shadow-[4px_4px_0_#111] ${
+                  editStatus === 'success' ? 'bg-[#3DD6FF]' : 'bg-[#FF4D8D]'
+                }`}
+              >
+                {editMessage}
+              </div>
+            )}
+
+            <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setEditingCase(null)}
+                className="border-4 border-black bg-white px-5 py-3 text-sm font-black uppercase shadow-[4px_4px_0_#111]"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                disabled={editStatus === 'saving'}
+                className="border-4 border-black bg-[#3DD6FF] px-5 py-3 text-sm font-black uppercase shadow-[4px_4px_0_#111] disabled:bg-neutral-300"
+              >
+                {editStatus === 'saving' ? 'Menyimpan...' : 'Simpan Perubahan'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       <button
         type="button"
