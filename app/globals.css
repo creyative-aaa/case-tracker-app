@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f6f7fb;
+  --foreground: #111827;
 }
 
 @theme inline {
@@ -12,15 +12,130 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+::selection {
+  background: #bfdbfe;
+  color: #111827;
+}
+
+button,
+a,
+input,
+textarea {
+  letter-spacing: 0;
+}
+
+body main {
+  background-color: #f8fafc !important;
+  background-image: radial-gradient(circle at top left, #dbeafe 0, transparent 28rem),
+    radial-gradient(circle at top right, #fee2e2 0, transparent 24rem) !important;
+  color: #111827 !important;
+}
+
+body [class*="border-black"] {
+  border-color: #e5e7eb !important;
+}
+
+body [class*="border-4"] {
+  border-width: 1px !important;
+}
+
+body [class*="border-2"] {
+  border-width: 1px !important;
+}
+
+body [class*="shadow-"] {
+  box-shadow: 0 18px 45px rgb(15 23 42 / 0.08) !important;
+}
+
+body header,
+body section,
+body form,
+body label,
+body li,
+body [class*="border-4"],
+body [class*="border-2"] {
+  border-radius: 24px !important;
+}
+
+body input,
+body textarea,
+body button,
+body a {
+  border-radius: 14px !important;
+}
+
+body button,
+body a {
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease !important;
+}
+
+body button:hover,
+body a:hover {
+  transform: translateY(-1px) !important;
+  box-shadow: 0 14px 30px rgb(15 23 42 / 0.1) !important;
+}
+
+body [class*="uppercase"] {
+  letter-spacing: 0.02em !important;
+}
+
+body [class*="font-black"] {
+  font-weight: 700 !important;
+}
+
+body [class*="bg-[#FFF2C7]"],
+body [class*="bg-[#F8F8F8]"],
+body [class*="bg-[#E9FF70]"],
+body [class*="bg-[#7CFF6B]"],
+body [class*="bg-[#FFD84D]"],
+body [class*="bg-[#B78CFF]"] {
+  background-color: #ffffff !important;
+}
+
+body [class*="bg-[#FFB000]"] {
+  background-color: #eff6ff !important;
+}
+
+body [class*="bg-[#3DD6FF]"] {
+  background-color: #dbeafe !important;
+}
+
+body [class*="bg-[#FF4D8D]"],
+body [class*="bg-[#FF6B9A]"] {
+  background-color: #fee2e2 !important;
+}
+
+body [class*="bg-[#111]"],
+body [class*="bg-[#202020]"] {
+  background-color: #ffffff !important;
+  color: #111827 !important;
+}
+
+body [class*="text-black"] {
+  color: #111827 !important;
+}
+
+body [class*="text-neutral-500"] {
+  color: #6b7280 !important;
+}
+
+body input,
+body textarea {
+  background-color: #ffffff !important;
+}
+
+body input:focus,
+body textarea:focus {
+  border-color: #93c5fd !important;
+  box-shadow: 0 0 0 4px rgb(147 197 253 / 0.22) !important;
 }
