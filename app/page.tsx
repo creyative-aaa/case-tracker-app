@@ -26,7 +26,12 @@ import {
 import { useChat, type UIMessage } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
 import type { User } from '@supabase/supabase-js';
-import { createClient, isSupabaseConfigured } from '@/lib/supabase';
+import {
+  createClient,
+  hasSupabaseConfig,
+  loadSupabaseConfig,
+  type SupabaseRuntimeConfig,
+} from '@/lib/supabase';
 
 type CaseItem = {
   id: string | number;
@@ -81,12 +86,15 @@ export default function Home() {
   const [input, setInput] = useState('');
   const [user, setUser] = useState<User | null>(null);
   const [sessionToken, setSessionToken] = useState('');
-  const [isCheckingAuth, setIsCheckingAuth] = useState(Boolean(createClient()));
+  const [supabaseConfig, setSupabaseConfig] =
+    useState<SupabaseRuntimeConfig | null>(null);
+  const [isConfigLoading, setIsConfigLoading] = useState(true);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [userApiKey, setUserApiKey] = useState('');
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [profileMessage, setProfileMessage] = useState('');
   const [isChatOpen, setIsChatOpen] = useState(false);
-  const supabase = useMemo(() => createClient(), []);
+  const supabase = useMemo(() => createClient(supabaseConfig), [supabaseConfig]);
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -99,6 +107,21 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    const loadConfig = async () => {
+      const config = await loadSupabaseConfig();
+
+      setSupabaseConfig(config);
+      setIsConfigLoading(false);
+    };
+
+    loadConfig();
+  }, []);
+
+  useEffect(() => {
+    if (isConfigLoading) {
+      return;
+    }
+
     if (!supabase) {
       queueMicrotask(() => setIsCheckingAuth(false));
       return;
@@ -129,7 +152,7 @@ export default function Home() {
     });
 
     return () => subscription.unsubscribe();
-  }, [supabase]);
+  }, [isConfigLoading, supabase]);
 
   const chatTransport = useMemo(
     () =>
@@ -373,7 +396,7 @@ export default function Home() {
             </div>
 
             <div className="min-h-[28rem] overflow-y-auto p-3 sm:p-4 lg:max-h-[calc(100vh-19rem)] lg:min-h-[34rem]">
-              {!isSupabaseConfigured && (
+              {!isConfigLoading && !hasSupabaseConfig(supabaseConfig) && (
                 <p className="mb-4 border-4 border-black bg-[#FFD84D] p-3 text-sm font-bold shadow-[5px_5px_0_#111]">
                   Supabase belum dikonfigurasi. Isi NEXT_PUBLIC_SUPABASE_URL
                   dan NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY di .env.local.

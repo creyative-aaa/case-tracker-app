@@ -18,7 +18,12 @@ import {
   UserRoundPlus,
 } from 'lucide-react';
 import type { User } from '@supabase/supabase-js';
-import { createClient, isSupabaseConfigured } from '@/lib/supabase';
+import {
+  createClient,
+  hasSupabaseConfig,
+  loadSupabaseConfig,
+  type SupabaseRuntimeConfig,
+} from '@/lib/supabase';
 
 const categoryOptions = [
   'Akademik',
@@ -39,9 +44,12 @@ const categoryIcons: Record<string, typeof GraduationCap> = {
 };
 
 export default function AddCasePage() {
-  const supabase = useMemo(() => createClient(), []);
+  const [supabaseConfig, setSupabaseConfig] =
+    useState<SupabaseRuntimeConfig | null>(null);
+  const [isConfigLoading, setIsConfigLoading] = useState(true);
+  const supabase = useMemo(() => createClient(supabaseConfig), [supabaseConfig]);
   const [user, setUser] = useState<User | null>(null);
-  const [isCheckingAuth, setIsCheckingAuth] = useState(Boolean(supabase));
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [userApiKey, setUserApiKey] = useState('');
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState(categoryOptions[0]);
@@ -65,7 +73,23 @@ export default function AddCasePage() {
   }, []);
 
   useEffect(() => {
+    const loadConfig = async () => {
+      const config = await loadSupabaseConfig();
+
+      setSupabaseConfig(config);
+      setIsConfigLoading(false);
+    };
+
+    loadConfig();
+  }, []);
+
+  useEffect(() => {
+    if (isConfigLoading) {
+      return;
+    }
+
     if (!supabase) {
+      queueMicrotask(() => setIsCheckingAuth(false));
       return;
     }
 
@@ -92,7 +116,7 @@ export default function AddCasePage() {
     });
 
     return () => subscription.unsubscribe();
-  }, [supabase]);
+  }, [isConfigLoading, supabase]);
 
   const handleSignInWithGoogle = async () => {
     if (!supabase) {
@@ -249,20 +273,20 @@ export default function AddCasePage() {
           </Link>
         </div>
 
-        {!isSupabaseConfigured && (
+        {!isConfigLoading && !hasSupabaseConfig(supabaseConfig) && (
           <div className="mb-4 border-4 border-black bg-[#FFD84D] p-4 text-sm font-black shadow-[6px_6px_0_#111]">
             Isi NEXT_PUBLIC_SUPABASE_URL dan NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
             di .env.local agar data bisa disimpan.
           </div>
         )}
 
-        {isSupabaseConfigured && isCheckingAuth && (
+        {!isConfigLoading && hasSupabaseConfig(supabaseConfig) && isCheckingAuth && (
           <div className="border-4 border-black bg-white p-6 text-lg font-black uppercase shadow-[8px_8px_0_#111]">
             Mengecek login...
           </div>
         )}
 
-        {isSupabaseConfigured && !isCheckingAuth && !user && (
+        {!isConfigLoading && hasSupabaseConfig(supabaseConfig) && !isCheckingAuth && !user && (
           <section className="border-4 border-black bg-white p-4 shadow-[6px_6px_0_#111] sm:p-6 sm:shadow-[10px_10px_0_#111]">
             <div className="max-w-2xl">
               <div className="mb-4 inline-flex items-center gap-2 border-2 border-black bg-[#3DD6FF] px-3 py-1 text-xs font-black uppercase shadow-[4px_4px_0_#111]">
@@ -298,7 +322,7 @@ export default function AddCasePage() {
           </section>
         )}
 
-        {isSupabaseConfigured && !isCheckingAuth && user && (
+        {!isConfigLoading && hasSupabaseConfig(supabaseConfig) && !isCheckingAuth && user && (
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-4 border-black bg-[#E9FF70] p-4 text-sm font-black shadow-[6px_6px_0_#111]">
             <span>
               Login sebagai {user.email ?? user.user_metadata?.full_name ?? 'Google User'}
@@ -314,7 +338,7 @@ export default function AddCasePage() {
           </div>
         )}
 
-        {isSupabaseConfigured && !isCheckingAuth && user && !userApiKey && (
+        {!isConfigLoading && hasSupabaseConfig(supabaseConfig) && !isCheckingAuth && user && !userApiKey && (
           <section className="border-4 border-black bg-white p-4 shadow-[6px_6px_0_#111] sm:p-6 sm:shadow-[10px_10px_0_#111]">
             <div className="max-w-2xl">
               <div className="mb-4 inline-flex items-center gap-2 border-2 border-black bg-[#FFD84D] px-3 py-1 text-xs font-black uppercase shadow-[4px_4px_0_#111]">
@@ -350,7 +374,7 @@ export default function AddCasePage() {
           </section>
         )}
 
-        {isSupabaseConfigured && !isCheckingAuth && user && userApiKey && (
+        {!isConfigLoading && hasSupabaseConfig(supabaseConfig) && !isCheckingAuth && user && userApiKey && (
         <form
           onSubmit={handleSubmit}
           className="grid gap-5 border-4 border-black bg-[#F8F8F8] p-4 shadow-[6px_6px_0_#111] sm:p-5 sm:shadow-[10px_10px_0_#111] lg:grid-cols-[0.85fr_1.15fr]"
