@@ -2,22 +2,18 @@
 
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
-  BriefcaseBusiness,
-  CheckCircle2,
-  CircleDollarSign,
-  FileBarChart,
-  GraduationCap,
-  Layers3,
+  FileImage,
+  Loader2,
   LogIn,
-  LogOut,
-  ImagePlus,
   Save,
-  Tags,
-  UserRoundPlus,
+  UploadCloud,
 } from 'lucide-react';
 import type { User } from '@supabase/supabase-js';
+import { AppShell } from '@/components/AppShell';
+import { CASE_CATEGORIES } from '@/lib/cases';
 import {
   createClient,
   hasSupabaseConfig,
@@ -25,506 +21,243 @@ import {
   type SupabaseRuntimeConfig,
 } from '@/lib/supabase';
 
-const categoryOptions = [
-  'Akademik',
-  'Keuangan',
-  'PMB',
-  'Pelaporan',
-  'Karir Link',
-  'Lain-lain',
-];
-
-const categoryIcons: Record<string, typeof GraduationCap> = {
-  Akademik: GraduationCap,
-  Keuangan: CircleDollarSign,
-  PMB: UserRoundPlus,
-  Pelaporan: FileBarChart,
-  'Karir Link': BriefcaseBusiness,
-  'Lain-lain': Tags,
-};
-
 export default function AddCasePage() {
-  const [supabaseConfig, setSupabaseConfig] =
-    useState<SupabaseRuntimeConfig | null>(null);
-  const [isConfigLoading, setIsConfigLoading] = useState(true);
-  const supabase = useMemo(() => createClient(supabaseConfig), [supabaseConfig]);
+  const router = useRouter();
+  const [config, setConfig] = useState<SupabaseRuntimeConfig | null>(null);
+  const [configLoading, setConfigLoading] = useState(true);
   const [user, setUser] = useState<User | null>(null);
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
-  const [userApiKey, setUserApiKey] = useState('');
+  const [authLoading, setAuthLoading] = useState(true);
   const [title, setTitle] = useState('');
-  const [category, setCategory] = useState(categoryOptions[0]);
+  const [category, setCategory] = useState<string>(CASE_CATEGORIES[0]);
   const [customCategory, setCustomCategory] = useState('');
   const [errorDescription, setErrorDescription] = useState('');
   const [errorImageUrl, setErrorImageUrl] = useState('');
   const [errorImageFile, setErrorImageFile] = useState<File | null>(null);
   const [solution, setSolution] = useState('');
-  const [status, setStatus] = useState<'idle' | 'saving' | 'success' | 'error'>(
-    'idle',
-  );
+  const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
+  const supabase = useMemo(() => createClient(config), [config]);
 
   useEffect(() => {
-    queueMicrotask(() => {
-      const savedApiKey =
-        localStorage.getItem('case-tracker-google-api-key') ?? '';
-
-      setUserApiKey(savedApiKey);
+    loadSupabaseConfig().then((runtimeConfig) => {
+      setConfig(runtimeConfig);
+      setConfigLoading(false);
     });
   }, []);
 
   useEffect(() => {
-    const loadConfig = async () => {
-      const config = await loadSupabaseConfig();
-
-      setSupabaseConfig(config);
-      setIsConfigLoading(false);
-    };
-
-    loadConfig();
-  }, []);
-
-  useEffect(() => {
-    if (isConfigLoading) {
-      return;
-    }
-
+    if (configLoading) return;
     if (!supabase) {
-      queueMicrotask(() => setIsCheckingAuth(false));
+      queueMicrotask(() => setAuthLoading(false));
       return;
     }
 
-    const loadSession = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
+    supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
-      setIsCheckingAuth(false);
-
+      setAuthLoading(false);
       if (window.location.search.includes('code=')) {
         window.history.replaceState({}, '', '/add-case');
       }
-    };
-
-    loadSession();
+    });
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
-      setIsCheckingAuth(false);
+      setAuthLoading(false);
     });
 
     return () => subscription.unsubscribe();
-  }, [isConfigLoading, supabase]);
+  }, [configLoading, supabase]);
 
-  const handleSignInWithGoogle = async () => {
+  const signIn = async () => {
     if (!supabase) {
-      setStatus('error');
-      setMessage('Supabase belum dikonfigurasi di .env.local.');
+      setMessage('Supabase belum dikonfigurasi.');
       return;
     }
-
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/add-case`,
-      },
+      options: { redirectTo: `${window.location.origin}/add-case` },
     });
-
-    if (error) {
-      setStatus('error');
-      setMessage(
-        error.message.includes('Unsupported provider')
-          ? 'Google login belum diaktifkan di Supabase Auth Providers.'
-          : error.message,
-      );
-    }
-  };
-
-  const handleSignOut = async () => {
-    if (!supabase) return;
-
-    await supabase.auth.signOut();
-    setUser(null);
+    if (error) setMessage(error.message);
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-
-    if (!supabase) {
-      setStatus('error');
-      setMessage('Supabase belum dikonfigurasi di .env.local.');
+    if (!supabase || !user) {
+      setMessage('Login dengan Google terlebih dahulu.');
       return;
     }
 
-    if (!userApiKey) {
-      setStatus('error');
-      setMessage('Simpan API key Google AI Studio terlebih dahulu.');
-      return;
-    }
-
-    if (!user) {
-      setStatus('error');
-      setMessage('Login dengan Google terlebih dahulu sebelum input case.');
-      return;
-    }
-
-    setStatus('saving');
+    setSaving(true);
     setMessage('');
 
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    const currentUser = session?.user;
-
-    if (!currentUser) {
-      setStatus('error');
-      setMessage('Sesi login sudah habis. Login ulang dengan Google.');
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) {
+      setSaving(false);
+      setMessage('Sesi login sudah berakhir. Silakan login kembali.');
       return;
     }
 
-    const selectedCategory =
-      category === 'Lain-lain' ? customCategory.trim() : category;
-    let uploadedImageUrl = errorImageUrl.trim();
+    const selectedCategory = category === 'Lain-lain' ? customCategory.trim() : category;
+    let imageUrl = errorImageUrl.trim();
 
     if (errorImageFile) {
-      const fileExt = errorImageFile.name.split('.').pop() ?? 'png';
-      const filePath = `${user.id}/${Date.now()}-${crypto.randomUUID()}.${fileExt}`;
-      const { error: uploadError } = await supabase.storage
-        .from('case-images')
-        .upload(filePath, errorImageFile, {
-          cacheControl: '3600',
-          upsert: false,
-        });
-
-      if (uploadError) {
-        setStatus('error');
-        setMessage(
-          uploadError.message.includes('Bucket not found')
-            ? 'Bucket case-images belum dibuat. Jalankan SQL Storage setup di Supabase.'
-            : uploadError.message,
-        );
+      if (errorImageFile.size > 5 * 1024 * 1024) {
+        setSaving(false);
+        setMessage('Ukuran gambar maksimal 5 MB.');
         return;
       }
 
-      const { data } = supabase.storage
+      const extension = errorImageFile.name.split('.').pop() ?? 'png';
+      const filePath = `${user.id}/${Date.now()}-${crypto.randomUUID()}.${extension}`;
+      const { error: uploadError } = await supabase.storage
         .from('case-images')
-        .getPublicUrl(filePath);
+        .upload(filePath, errorImageFile, { cacheControl: '3600', upsert: false });
 
-      uploadedImageUrl = data.publicUrl;
+      if (uploadError) {
+        setSaving(false);
+        setMessage(uploadError.message);
+        return;
+      }
+
+      imageUrl = supabase.storage.from('case-images').getPublicUrl(filePath).data.publicUrl;
     }
 
     const { error } = await supabase.from('cases').insert({
-      title,
+      title: title.trim(),
       category: selectedCategory,
-      error_description: errorDescription,
-      error_image_url: uploadedImageUrl || null,
-      solution,
-      resolution_steps: solution,
-      created_by_id: currentUser.id,
-      created_by_email: currentUser.email,
+      error_description: errorDescription.trim(),
+      error_image_url: imageUrl || null,
+      solution: solution.trim(),
+      resolution_steps: solution.trim(),
+      created_by_id: session.user.id,
+      created_by_email: session.user.email,
     });
 
     if (error) {
-      setStatus('error');
-      setMessage(
-        error.message.includes('schema cache')
-          ? `Database belum punya kolom yang dibutuhkan: ${error.message}. Jalankan ulang SQL migration di Supabase, lalu refresh schema cache.`
-          : error.message,
-      );
+      setSaving(false);
+      setMessage(error.message);
       return;
     }
 
-    setStatus('success');
-    setMessage('Case berhasil ditambahkan.');
-    setTitle('');
-    setCategory(categoryOptions[0]);
-    setCustomCategory('');
-    setErrorDescription('');
-    setErrorImageUrl('');
-    setErrorImageFile(null);
-    setSolution('');
+    router.replace('/my-cases?created=1');
   };
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#FFF2C7] bg-[linear-gradient(#111_1px,transparent_1px),linear-gradient(90deg,#111_1px,transparent_1px)] bg-[size:34px_34px] px-3 py-4 text-black sm:px-4 sm:py-5 lg:px-6">
-      <div className="mx-auto max-w-5xl">
-        <div className="mb-5 flex flex-wrap items-center justify-between gap-4 border-4 border-black bg-[#FFB000] p-4 shadow-[6px_6px_0_#111] sm:p-5 sm:shadow-[9px_9px_0_#111]">
-          <div>
-            <div className="mb-3 inline-flex items-center gap-2 border-2 border-black bg-white px-3 py-1 text-xs font-black uppercase shadow-[4px_4px_0_#111]">
-              <Layers3 className="h-3.5 w-3.5" />
-              Knowledge Builder
+    <AppShell>
+      <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
+        <Link href="/" className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-900">
+          <ArrowLeft className="h-4 w-4" />
+          Kembali ke knowledge base
+        </Link>
+
+        <header className="mt-6">
+          <p className="text-sm font-medium text-blue-600">Dokumentasi baru</p>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">Tambah case</h1>
+          <p className="mt-2 text-sm leading-6 text-slate-500">
+            Dokumentasikan masalah dan solusi yang sudah berhasil diterapkan.
+          </p>
+        </header>
+
+        {configLoading || authLoading ? (
+          <div className="mt-8 h-96 animate-pulse rounded-xl border border-slate-200 bg-white" />
+        ) : !hasSupabaseConfig(config) ? (
+          <div className="mt-8 rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
+            Supabase belum dikonfigurasi. Form belum dapat digunakan.
+          </div>
+        ) : !user ? (
+          <section className="mt-8 rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+            <div className="mx-auto grid h-12 w-12 place-items-center rounded-xl bg-blue-50 text-blue-600">
+              <LogIn className="h-5 w-5" />
             </div>
-            <h1 className="text-2xl font-black uppercase leading-none tracking-normal sm:text-3xl lg:text-5xl">
-              Tambah Case Baru
-            </h1>
-            <p className="mt-3 max-w-xl text-sm font-bold">
-              Simpan error dan solusi dalam format yang gampang dicari ulang.
+            <h2 className="mt-4 text-lg font-semibold">Login untuk menambah case</h2>
+            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
+              Setiap case disimpan atas nama pengguna agar dapat dikelola kembali melalui halaman Case Saya.
             </p>
-          </div>
-
-          <Link
-            href="/"
-            className="inline-flex w-full items-center justify-center gap-2 border-4 border-black bg-white px-4 py-3 text-sm font-black uppercase shadow-[5px_5px_0_#111] transition hover:-translate-x-1 hover:-translate-y-1 hover:shadow-[8px_8px_0_#111] sm:w-auto sm:shadow-[6px_6px_0_#111] sm:hover:shadow-[10px_10px_0_#111]"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Kembali
-          </Link>
-        </div>
-
-        {!isConfigLoading && !hasSupabaseConfig(supabaseConfig) && (
-          <div className="mb-4 border-4 border-black bg-[#FFD84D] p-4 text-sm font-black shadow-[6px_6px_0_#111]">
-            Isi NEXT_PUBLIC_SUPABASE_URL dan NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
-            di Cloudflare Variables, lalu redeploy agar data bisa disimpan.
-          </div>
-        )}
-
-        {!isConfigLoading && hasSupabaseConfig(supabaseConfig) && isCheckingAuth && (
-          <div className="border-4 border-black bg-white p-6 text-lg font-black uppercase shadow-[8px_8px_0_#111]">
-            Mengecek login...
-          </div>
-        )}
-
-        {!isConfigLoading && hasSupabaseConfig(supabaseConfig) && !isCheckingAuth && !user && (
-          <section className="border-4 border-black bg-white p-4 shadow-[6px_6px_0_#111] sm:p-6 sm:shadow-[10px_10px_0_#111]">
-            <div className="max-w-2xl">
-              <div className="mb-4 inline-flex items-center gap-2 border-2 border-black bg-[#3DD6FF] px-3 py-1 text-xs font-black uppercase shadow-[4px_4px_0_#111]">
-                <LogIn className="h-3.5 w-3.5" />
-                Login Required
-              </div>
-              <h2 className="text-2xl font-black uppercase leading-none sm:text-3xl">
-                Masuk dulu untuk input case
-              </h2>
-              <p className="mt-3 text-sm font-bold leading-6">
-                Halaman depan bisa dibuka semua pengunjung. Untuk menjaga data
-                knowledge base tetap rapi, input case hanya bisa dilakukan
-                setelah login dengan Google.
-              </p>
-            </div>
-
-            {message && (
-              <div className="mt-5 border-4 border-black bg-[#FF4D8D] p-3 text-sm font-black shadow-[5px_5px_0_#111]">
-                {message}
-              </div>
-            )}
-
-            <button
-              type="button"
-              onClick={handleSignInWithGoogle}
-              className="mt-6 inline-flex w-full items-center justify-center gap-3 border-4 border-black bg-[#E9FF70] px-5 py-3 text-sm font-black uppercase shadow-[5px_5px_0_#111] transition hover:-translate-x-1 hover:-translate-y-1 hover:shadow-[8px_8px_0_#111] sm:w-auto sm:shadow-[7px_7px_0_#111] sm:hover:shadow-[11px_11px_0_#111]"
-            >
-              <span className="grid h-6 w-6 place-items-center border-2 border-black bg-white font-black">
-                G
-              </span>
+            <button type="button" onClick={signIn} className="mt-5 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700">
               Login dengan Google
             </button>
+            {message && <p className="mt-4 text-sm text-red-600">{message}</p>}
           </section>
-        )}
-
-        {!isConfigLoading && hasSupabaseConfig(supabaseConfig) && !isCheckingAuth && user && (
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-4 border-black bg-[#E9FF70] p-4 text-sm font-black shadow-[6px_6px_0_#111]">
-            <span>
-              Login sebagai {user.email ?? user.user_metadata?.full_name ?? 'Google User'}
-            </span>
-            <button
-              type="button"
-              onClick={handleSignOut}
-              className="inline-flex items-center gap-2 border-2 border-black bg-white px-3 py-2 text-xs font-black uppercase shadow-[3px_3px_0_#111] transition hover:-translate-x-0.5 hover:-translate-y-0.5"
-            >
-              <LogOut className="h-4 w-4" />
-              Logout
-            </button>
-          </div>
-        )}
-
-        {!isConfigLoading && hasSupabaseConfig(supabaseConfig) && !isCheckingAuth && user && !userApiKey && (
-          <section className="border-4 border-black bg-white p-4 shadow-[6px_6px_0_#111] sm:p-6 sm:shadow-[10px_10px_0_#111]">
-            <div className="max-w-2xl">
-              <div className="mb-4 inline-flex items-center gap-2 border-2 border-black bg-[#FFD84D] px-3 py-1 text-xs font-black uppercase shadow-[4px_4px_0_#111]">
-                API Key Required
+        ) : (
+          <form onSubmit={handleSubmit} className="mt-8 space-y-6">
+            <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+              <div className="border-b border-slate-100 pb-4">
+                <h2 className="font-semibold text-slate-900">Informasi case</h2>
+                <p className="mt-1 text-sm text-slate-500">Berikan identitas singkat agar case mudah ditemukan.</p>
               </div>
-              <h2 className="text-2xl font-black uppercase leading-none sm:text-3xl">
-                Set API key di profil dulu
-              </h2>
-              <p className="mt-3 text-sm font-bold leading-6">
-                Pengaturan Gemini API key sekarang ada di Profil Login halaman
-                depan. Setelah tersimpan, balik lagi ke halaman ini untuk input
-                case.
-              </p>
-            </div>
-
-            <Link
-              href="/"
-              className="mt-5 inline-flex w-full items-center justify-center gap-2 border-4 border-black bg-[#3DD6FF] px-5 py-3 text-sm font-black uppercase shadow-[5px_5px_0_#111] sm:w-auto"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Buka Profil
-            </Link>
-
-            {message && (
-              <div
-                className={`mt-5 border-4 border-black p-3 text-sm font-black shadow-[5px_5px_0_#111] ${
-                  status === 'success' ? 'bg-[#7CFF6B]' : 'bg-[#FF4D8D]'
-                }`}
-              >
-                {message}
-              </div>
-            )}
-          </section>
-        )}
-
-        {!isConfigLoading && hasSupabaseConfig(supabaseConfig) && !isCheckingAuth && user && userApiKey && (
-        <form
-          onSubmit={handleSubmit}
-          className="grid gap-5 border-4 border-black bg-[#F8F8F8] p-4 shadow-[6px_6px_0_#111] sm:p-5 sm:shadow-[10px_10px_0_#111] lg:grid-cols-[0.85fr_1.15fr]"
-        >
-          <section className="space-y-4">
-            <label className="block border-4 border-black bg-white p-4 shadow-[6px_6px_0_#111]">
-              <span className="mb-2 block text-sm font-black uppercase">
-                Judul Case
-              </span>
-              <input
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-                required
-                className="w-full border-4 border-black bg-[#FFF2C7] p-3 text-sm font-bold outline-none focus:bg-[#E9FF70]"
-                placeholder="Contoh: Tagihan tidak muncul"
-              />
-            </label>
-
-            <div className="border-4 border-black bg-white p-4 shadow-[6px_6px_0_#111]">
-              <span className="mb-3 block text-sm font-black uppercase">
-                Kategori
-              </span>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                {categoryOptions.map((option) => {
-                  const Icon = categoryIcons[option];
-                  const selected = category === option;
-
-                  return (
-                    <button
-                      key={option}
-                      type="button"
-                      onClick={() => setCategory(option)}
-                      className={`flex items-center gap-2 border-4 border-black px-3 py-2.5 text-left text-sm font-black uppercase shadow-[4px_4px_0_#111] transition hover:-translate-x-1 hover:-translate-y-1 hover:shadow-[7px_7px_0_#111] ${
-                        selected ? 'bg-[#3DD6FF]' : 'bg-[#F8F8F8]'
-                      }`}
-                    >
-                      <Icon className="h-4 w-4 shrink-0" />
-                      {option}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {category === 'Lain-lain' && (
-              <label className="block border-4 border-black bg-white p-4 shadow-[6px_6px_0_#111]">
-                <span className="mb-2 block text-sm font-black uppercase">
-                  Kategori Lainnya
-                </span>
-                <input
-                  value={customCategory}
-                  onChange={(event) => setCustomCategory(event.target.value)}
-                  required
-                  className="w-full border-4 border-black bg-[#FFF2C7] p-3 text-sm font-bold outline-none focus:bg-[#E9FF70]"
-                  placeholder="Contoh: LMS, Integrasi, Perpustakaan"
-                />
-              </label>
-            )}
-          </section>
-
-          <section className="space-y-4">
-            <label className="block">
-              <span className="mb-2 block text-sm font-black uppercase">
-                Deskripsi Error
-              </span>
-              <textarea
-                value={errorDescription}
-                onChange={(event) => setErrorDescription(event.target.value)}
-                required
-                rows={7}
-                className="w-full resize-none border-4 border-black bg-white p-4 text-sm font-bold leading-6 outline-none shadow-[6px_6px_0_#111] focus:bg-[#FFF2C7]"
-                placeholder="Tuliskan gejala, pesan error, user terdampak, dan kondisi saat masalah muncul."
-              />
-            </label>
-
-            <label className="block">
-              <span className="mb-2 block text-sm font-black uppercase">
-                Upload Gambar Error
-              </span>
-              <div className="border-4 border-black bg-white p-4 shadow-[6px_6px_0_#111]">
-                <label className="flex cursor-pointer items-center justify-center gap-3 border-4 border-black bg-[#3DD6FF] px-4 py-3 text-sm font-black uppercase shadow-[4px_4px_0_#111] transition hover:-translate-x-1 hover:-translate-y-1">
-                  <ImagePlus className="h-5 w-5" />
-                  Pilih Gambar
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(event) =>
-                      setErrorImageFile(event.target.files?.[0] ?? null)
-                    }
-                    className="sr-only"
-                  />
+              <div className="mt-5 grid gap-5 sm:grid-cols-2">
+                <label className="sm:col-span-2">
+                  <span className="text-sm font-medium text-slate-700">Judul case</span>
+                  <input required value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Contoh: Tagihan mahasiswa tidak muncul" className="mt-2 w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm outline-none" />
                 </label>
-                {errorImageFile && (
-                  <p className="mt-3 break-all text-xs font-black">
-                    File: {errorImageFile.name}
-                  </p>
+                <label>
+                  <span className="text-sm font-medium text-slate-700">Kategori</span>
+                  <select value={category} onChange={(event) => setCategory(event.target.value)} className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm outline-none">
+                    {CASE_CATEGORIES.map((option) => <option key={option}>{option}</option>)}
+                  </select>
+                </label>
+                {category === 'Lain-lain' && (
+                  <label>
+                    <span className="text-sm font-medium text-slate-700">Nama kategori</span>
+                    <input required value={customCategory} onChange={(event) => setCustomCategory(event.target.value)} placeholder="Contoh: LMS" className="mt-2 w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm outline-none" />
+                  </label>
                 )}
               </div>
-            </label>
+            </section>
 
-            <label className="block">
-              <span className="mb-2 block text-sm font-black uppercase">
-                Atau Link Gambar Error
-              </span>
-              <input
-                type="url"
-                value={errorImageUrl}
-                onChange={(event) => setErrorImageUrl(event.target.value)}
-                className="w-full border-4 border-black bg-white p-4 text-sm font-bold leading-6 outline-none shadow-[6px_6px_0_#111] focus:bg-[#FFF2C7]"
-                placeholder="Tempel URL screenshot error, contoh: https://..."
-              />
-            </label>
-
-            <label className="block">
-              <span className="mb-2 block text-sm font-black uppercase">
-                Solusi
-              </span>
-              <textarea
-                value={solution}
-                onChange={(event) => setSolution(event.target.value)}
-                required
-                rows={8}
-                className="w-full resize-none border-4 border-black bg-white p-4 text-sm font-bold leading-6 outline-none shadow-[6px_6px_0_#111] focus:bg-[#FFF2C7]"
-                placeholder="Tuliskan langkah penyelesaian yang berhasil."
-              />
-            </label>
-
-            {message && (
-              <div
-                className={`flex items-center gap-2 border-4 border-black p-3 text-sm font-black shadow-[5px_5px_0_#111] ${
-                  status === 'success' ? 'bg-[#7CFF6B]' : 'bg-[#FF4D8D]'
-                }`}
-              >
-                {status === 'success' && <CheckCircle2 className="h-4 w-4" />}
-                {message}
+            <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+              <div className="border-b border-slate-100 pb-4">
+                <h2 className="font-semibold text-slate-900">Detail masalah</h2>
+                <p className="mt-1 text-sm text-slate-500">Jelaskan gejala, pesan error, dan kondisi saat masalah terjadi.</p>
               </div>
-            )}
+              <label className="mt-5 block">
+                <span className="text-sm font-medium text-slate-700">Deskripsi error</span>
+                <textarea required rows={7} value={errorDescription} onChange={(event) => setErrorDescription(event.target.value)} placeholder="Tuliskan detail permasalahan..." className="mt-2 w-full resize-y rounded-lg border border-slate-300 px-3.5 py-3 text-sm leading-6 outline-none" />
+              </label>
+            </section>
 
-            <button
-              type="submit"
-              disabled={status === 'saving'}
-              className="inline-flex w-full items-center justify-center gap-2 border-4 border-black bg-[#FF4D8D] px-5 py-3 text-sm font-black uppercase shadow-[7px_7px_0_#111] transition hover:-translate-x-1 hover:-translate-y-1 hover:shadow-[11px_11px_0_#111] disabled:translate-x-0 disabled:translate-y-0 disabled:bg-neutral-300 disabled:shadow-none lg:w-auto"
-            >
-              <Save className="h-4 w-4" />
-              {status === 'saving' ? 'Menyimpan...' : 'Simpan Case'}
-            </button>
-          </section>
-        </form>
+            <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+              <div className="border-b border-slate-100 pb-4">
+                <h2 className="font-semibold text-slate-900">Solusi</h2>
+                <p className="mt-1 text-sm text-slate-500">Tuliskan langkah penyelesaian yang sudah terbukti berhasil.</p>
+              </div>
+              <textarea required rows={8} value={solution} onChange={(event) => setSolution(event.target.value)} placeholder="Jelaskan solusi secara berurutan..." className="mt-5 w-full resize-y rounded-lg border border-slate-300 px-3.5 py-3 text-sm leading-6 outline-none" />
+            </section>
+
+            <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+              <div className="border-b border-slate-100 pb-4">
+                <h2 className="font-semibold text-slate-900">Lampiran</h2>
+                <p className="mt-1 text-sm text-slate-500">Tambahkan screenshot melalui upload atau URL publik.</p>
+              </div>
+              <div className="mt-5 grid gap-5 sm:grid-cols-2">
+                <label className="flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5 text-center hover:border-blue-400 hover:bg-blue-50/40">
+                  {errorImageFile ? <FileImage className="h-6 w-6 text-blue-600" /> : <UploadCloud className="h-6 w-6 text-slate-400" />}
+                  <span className="mt-2 text-sm font-medium text-slate-700">{errorImageFile?.name ?? 'Pilih screenshot'}</span>
+                  <span className="mt-1 text-xs text-slate-500">PNG, JPG, atau WebP · Maks. 5 MB</span>
+                  <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => setErrorImageFile(event.target.files?.[0] ?? null)} className="sr-only" />
+                </label>
+                <label>
+                  <span className="text-sm font-medium text-slate-700">Atau URL gambar</span>
+                  <input type="url" value={errorImageUrl} onChange={(event) => setErrorImageUrl(event.target.value)} placeholder="https://..." className="mt-2 w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm outline-none" />
+                  <p className="mt-2 text-xs leading-5 text-slate-500">File yang diunggah akan diprioritaskan jika keduanya diisi.</p>
+                </label>
+              </div>
+            </section>
+
+            {message && <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{message}</p>}
+
+            <div className="flex flex-col-reverse gap-3 border-t border-slate-200 pt-6 sm:flex-row sm:justify-end">
+              <Link href="/my-cases" className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Batal</Link>
+              <button type="submit" disabled={saving} className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:bg-slate-300">
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                {saving ? 'Menyimpan...' : 'Simpan case'}
+              </button>
+            </div>
+          </form>
         )}
       </div>
-    </main>
+    </AppShell>
   );
 }

@@ -1,32 +1,11 @@
 'use client';
 
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import {
-  ArrowUp,
-  Bot,
-  BriefcaseBusiness,
-  CircleDollarSign,
-  FileBarChart,
-  GraduationCap,
-  KeyRound,
-  LogIn,
-  LogOut,
-  MessageCircle,
-  MessageSquareText,
-  Pencil,
-  Plus,
-  Search,
-  Sparkles,
-  Tags,
-  UserCircle,
-  UserRoundPlus,
-  Wrench,
-  X,
-} from 'lucide-react';
-import { useChat, type UIMessage } from '@ai-sdk/react';
-import { DefaultChatTransport } from 'ai';
-import type { User } from '@supabase/supabase-js';
+import { BookOpen, ChevronDown, Plus, Search, SlidersHorizontal } from 'lucide-react';
+import { AppShell } from '@/components/AppShell';
+import { CaseCard } from '@/components/CaseCard';
+import { CASE_CATEGORIES, CASE_SELECT, type CaseItem } from '@/lib/cases';
 import {
   createClient,
   hasSupabaseConfig,
@@ -34,912 +13,147 @@ import {
   type SupabaseRuntimeConfig,
 } from '@/lib/supabase';
 
-type CaseItem = {
-  id: string | number;
-  title: string;
-  category: string | null;
-  error_description: string;
-  error_image_url: string | null;
-  solution: string;
-  created_by_id: string | null;
-  created_by_email: string | null;
-  created_at: string;
-};
-
-type EditCaseForm = {
-  id: string | number;
-  title: string;
-  category: string;
-  error_description: string;
-  error_image_url: string;
-  solution: string;
-};
-
-const categoryOptions = [
-  'Semua',
-  'Akademik',
-  'Keuangan',
-  'PMB',
-  'Pelaporan',
-  'Karir Link',
-  'Lain-lain',
-];
-
-const categoryStyles: Record<
-  string,
-  { icon: typeof GraduationCap; className: string }
-> = {
-  Akademik: { icon: GraduationCap, className: 'bg-[#3DD6FF]' },
-  Keuangan: { icon: CircleDollarSign, className: 'bg-white' },
-  PMB: { icon: UserRoundPlus, className: 'bg-[#FF4D8D]' },
-  Pelaporan: { icon: FileBarChart, className: 'bg-[#3DD6FF]' },
-  'Karir Link': { icon: BriefcaseBusiness, className: 'bg-white' },
-};
-
-function getMessageText(message: UIMessage) {
-  return message.parts
-    .filter((part) => part.type === 'text')
-    .map((part) => part.text)
-    .join('');
-}
-
-function getCategoryMeta(category: string | null) {
-  return categoryStyles[category ?? ''] ?? {
-    icon: Tags,
-    className: 'bg-white',
-  };
-}
+const filterCategories = ['Semua', ...CASE_CATEGORIES];
 
 export default function Home() {
   const [cases, setCases] = useState<CaseItem[]>([]);
   const [search, setSearch] = useState('');
-  const [activeCategory, setActiveCategory] = useState('Semua');
-  const [input, setInput] = useState('');
-  const [user, setUser] = useState<User | null>(null);
-  const [sessionToken, setSessionToken] = useState('');
-  const [supabaseConfig, setSupabaseConfig] =
-    useState<SupabaseRuntimeConfig | null>(null);
-  const [isConfigLoading, setIsConfigLoading] = useState(true);
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
-  const [userApiKey, setUserApiKey] = useState('');
-  const [apiKeyInput, setApiKeyInput] = useState('');
-  const [profileMessage, setProfileMessage] = useState('');
-  const [isChatOpen, setIsChatOpen] = useState(false);
-  const [editingCase, setEditingCase] = useState<EditCaseForm | null>(null);
-  const [editStatus, setEditStatus] = useState<
-    'idle' | 'saving' | 'success' | 'error'
-  >('idle');
-  const [editMessage, setEditMessage] = useState('');
-  const supabase = useMemo(() => createClient(supabaseConfig), [supabaseConfig]);
+  const [category, setCategory] = useState('Semua');
+  const [config, setConfig] = useState<SupabaseRuntimeConfig | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const supabase = useMemo(() => createClient(config), [config]);
 
   useEffect(() => {
-    queueMicrotask(() => {
-      const savedApiKey =
-        localStorage.getItem('case-tracker-google-api-key') ?? '';
-
-      setUserApiKey(savedApiKey);
-      setApiKeyInput(savedApiKey);
-    });
+    loadSupabaseConfig().then(setConfig);
   }, []);
 
   useEffect(() => {
-    const loadConfig = async () => {
-      const config = await loadSupabaseConfig();
-
-      setSupabaseConfig(config);
-      setIsConfigLoading(false);
-    };
-
-    loadConfig();
-  }, []);
-
-  useEffect(() => {
-    if (isConfigLoading) {
-      return;
+    if (!config) {
+      const timer = window.setTimeout(() => setLoading(false), 0);
+      return () => window.clearTimeout(timer);
     }
 
-    if (!supabase) {
-      queueMicrotask(() => setIsCheckingAuth(false));
-      return;
-    }
-
-    const loadSession = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      setUser(session?.user ?? null);
-      setSessionToken(session?.access_token ?? '');
-      setIsCheckingAuth(false);
-
-      if (window.location.search.includes('code=')) {
-        window.history.replaceState({}, '', '/');
-      }
-    };
-
-    loadSession();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      setSessionToken(session?.access_token ?? '');
-      setIsCheckingAuth(false);
-    });
-
-    return () => subscription.unsubscribe();
-  }, [isConfigLoading, supabase]);
-
-  const chatTransport = useMemo(
-    () =>
-      new DefaultChatTransport({
-        api: '/api/chat',
-        headers:
-          userApiKey && sessionToken
-            ? {
-                authorization: `Bearer ${sessionToken}`,
-                'x-google-api-key': userApiKey,
-              }
-            : undefined,
-      }),
-    [sessionToken, userApiKey],
-  );
-
-  const { messages, sendMessage, status, error } = useChat({
-    transport: chatTransport,
-  });
-  const isLoading = status === 'submitted' || status === 'streaming';
-
-  useEffect(() => {
     const fetchCases = async () => {
-      if (!supabase) return;
-
-      const { data } = await supabase
+      setLoading(true);
+      setError('');
+      const { data, error: queryError } = await supabase!
         .from('cases')
-        .select(
-          'id,title,category,error_description,error_image_url,solution,created_by_id,created_by_email,created_at',
-        )
+        .select(CASE_SELECT)
         .order('created_at', { ascending: false })
-        .limit(30);
+        .limit(60);
 
-      if (data) {
-        setCases(data);
-      }
+      if (queryError) setError(queryError.message);
+      else setCases((data as CaseItem[]) ?? []);
+      setLoading(false);
     };
 
     fetchCases();
-  }, [supabase]);
+  }, [config, supabase]);
 
-  const filteredCases = cases.filter((item) => {
-    const query = search.toLowerCase();
-    const matchesSearch =
-      item.title.toLowerCase().includes(query) ||
-      item.error_description.toLowerCase().includes(query) ||
-      item.solution.toLowerCase().includes(query);
+  const filteredCases = cases.filter((caseItem) => {
+    const query = search.trim().toLowerCase();
+    const matchesQuery =
+      !query ||
+      caseItem.title.toLowerCase().includes(query) ||
+      caseItem.error_description.toLowerCase().includes(query) ||
+      caseItem.solution.toLowerCase().includes(query);
     const matchesCategory =
-      activeCategory === 'Semua' ||
-      (item.category ?? 'Lain-lain') === activeCategory;
-
-    return matchesSearch && matchesCategory;
+      category === 'Semua' || (caseItem.category ?? 'Lain-lain') === category;
+    return matchesQuery && matchesCategory;
   });
-  const myCases = user
-    ? cases.filter((caseItem) => caseItem.created_by_id === user.id)
-    : [];
-  const latestMyCases = myCases.slice(0, 3);
-
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    const text = input.trim();
-    if (!text || isLoading || !user || !userApiKey) return;
-
-    setInput('');
-    await sendMessage({ text });
-  };
-
-  const handleSignInWithGoogle = async () => {
-    if (!supabase) {
-      setProfileMessage('Supabase belum dikonfigurasi di .env.local.');
-      return;
-    }
-
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: window.location.origin,
-      },
-    });
-
-    if (error) {
-      setProfileMessage(
-        error.message.includes('Unsupported provider')
-          ? 'Google login belum diaktifkan di Supabase Auth Providers.'
-          : error.message,
-      );
-    }
-  };
-
-  const handleSignOut = async () => {
-    if (!supabase) return;
-
-    await supabase.auth.signOut();
-    setUser(null);
-    setSessionToken('');
-  };
-
-  const handleSaveApiKey = () => {
-    const cleanedApiKey = apiKeyInput.trim();
-
-    if (!cleanedApiKey) {
-      setProfileMessage('Isi Gemini API key terlebih dahulu.');
-      return;
-    }
-
-    localStorage.setItem('case-tracker-google-api-key', cleanedApiKey);
-    setUserApiKey(cleanedApiKey);
-    setProfileMessage('Gemini API key berhasil disimpan di profil browser ini.');
-  };
-
-  const handleEditCase = (caseItem: CaseItem) => {
-    setEditingCase({
-      id: caseItem.id,
-      title: caseItem.title,
-      category: caseItem.category ?? 'Lain-lain',
-      error_description: caseItem.error_description,
-      error_image_url: caseItem.error_image_url ?? '',
-      solution: caseItem.solution,
-    });
-    setEditStatus('idle');
-    setEditMessage('');
-  };
-
-  const handleUpdateCase = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    if (!supabase || !editingCase || !user) {
-      setEditStatus('error');
-      setEditMessage('Login diperlukan untuk edit case.');
-      return;
-    }
-
-    setEditStatus('saving');
-    setEditMessage('');
-
-    const { error } = await supabase
-      .from('cases')
-      .update({
-        title: editingCase.title,
-        category: editingCase.category,
-        error_description: editingCase.error_description,
-        error_image_url: editingCase.error_image_url.trim() || null,
-        solution: editingCase.solution,
-        resolution_steps: editingCase.solution,
-      })
-      .eq('id', editingCase.id);
-
-    if (error) {
-      setEditStatus('error');
-      setEditMessage(error.message);
-      return;
-    }
-
-    setCases((currentCases) =>
-      currentCases.map((caseItem) =>
-        caseItem.id === editingCase.id
-          ? {
-              ...caseItem,
-              title: editingCase.title,
-              category: editingCase.category,
-              error_description: editingCase.error_description,
-              error_image_url: editingCase.error_image_url.trim() || null,
-              solution: editingCase.solution,
-            }
-          : caseItem,
-      ),
-    );
-    setEditStatus('success');
-    setEditMessage('Case berhasil diperbarui.');
-  };
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#FFF2C7] bg-[linear-gradient(#111_1px,transparent_1px),linear-gradient(90deg,#111_1px,transparent_1px)] bg-[size:34px_34px] text-black">
-      <div className="mx-auto max-w-7xl px-3 py-4 sm:px-4 sm:py-5 lg:px-6">
-        <header className="mb-5 border-4 border-black bg-[#FFB000] p-4 shadow-[6px_6px_0_#111] sm:p-5 sm:shadow-[10px_10px_0_#111]">
-          <div className="flex flex-wrap items-start justify-between gap-5">
-            <div className="max-w-3xl">
-              <div className="mb-3 inline-flex items-center gap-2 border-2 border-black bg-white px-3 py-1 text-xs font-black uppercase shadow-[4px_4px_0_#111]">
-                <Sparkles className="h-3.5 w-3.5" />
-                Case Tracker ALDI
-              </div>
-              <h1 className="text-3xl font-black uppercase leading-none tracking-normal sm:text-4xl lg:text-6xl">
-                Knowledge Base Support
-              </h1>
-              <p className="mt-4 max-w-2xl text-base font-bold leading-7">
-                Cari permasalahan yang pernah ditangani, lihat screenshot
-                error, lalu pakai AI support jika butuh bantuan cepat.
-              </p>
-            </div>
-
-            <section className="w-full border-4 border-black bg-white p-3 shadow-[5px_5px_0_#111] sm:max-w-sm sm:shadow-[7px_7px_0_#111]">
-              <div className="mb-3 flex items-center gap-2 text-xs font-black uppercase">
-                <UserCircle className="h-4 w-4" />
-                Profil Login
-              </div>
-
-              {isCheckingAuth ? (
-                <p className="border-2 border-black bg-[#FFF2C7] p-2 text-xs font-black">
-                  Mengecek login...
-                </p>
-              ) : user ? (
-                <div className="space-y-3">
-                  <div className="break-all border-2 border-black bg-[#E9FF70] p-2 text-xs font-black">
-                    {user.email ?? 'Google User'}
-                  </div>
-
-                  <div className="border-2 border-black bg-white p-3 shadow-[3px_3px_0_#111]">
-                    <div className="mb-2 flex items-center justify-between gap-2">
-                      <span className="text-xs font-black uppercase">
-                        Case Saya
-                      </span>
-                      <span className="border-2 border-black bg-[#3DD6FF] px-2 py-0.5 text-xs font-black">
-                        {myCases.length}
-                      </span>
-                    </div>
-
-                    {latestMyCases.length === 0 ? (
-                      <p className="text-xs font-bold text-neutral-500">
-                        Belum ada case yang kamu upload.
-                      </p>
-                    ) : (
-                      <ul className="space-y-2">
-                        {latestMyCases.map((caseItem) => (
-                          <li
-                            key={caseItem.id}
-                            className="flex items-center justify-between gap-2 border-2 border-black bg-[#FFF2C7] p-2"
-                          >
-                            <span className="min-w-0 flex-1 truncate text-xs font-black">
-                              {caseItem.title}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => handleEditCase(caseItem)}
-                              className="inline-flex shrink-0 items-center gap-1 border-2 border-black bg-[#3DD6FF] px-2 py-1 text-[0.68rem] font-black uppercase"
-                            >
-                              <Pencil className="h-3 w-3" />
-                              Edit
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-
-                    {myCases.length > latestMyCases.length && (
-                      <p className="mt-2 text-xs font-bold text-neutral-500">
-                        {myCases.length - latestMyCases.length} case lainnya
-                        ada di daftar bawah.
-                      </p>
-                    )}
-                  </div>
-
-                  <label className="block">
-                    <span className="mb-1 flex items-center gap-1 text-xs font-black uppercase">
-                      <KeyRound className="h-3.5 w-3.5" />
-                      Gemini API Key
-                    </span>
-                    <input
-                      type="password"
-                      value={apiKeyInput}
-                      onChange={(event) =>
-                        setApiKeyInput(event.target.value)
-                      }
-                      placeholder="Tempel API key Google AI Studio"
-                      className="w-full border-4 border-black bg-[#FFF2C7] px-3 py-2 text-xs font-bold outline-none"
-                    />
-                  </label>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <button
-                      type="button"
-                      onClick={handleSaveApiKey}
-                      className="border-4 border-black bg-[#3DD6FF] px-3 py-2 text-xs font-black uppercase shadow-[3px_3px_0_#111]"
-                    >
-                      Simpan Key
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleSignOut}
-                      className="inline-flex items-center justify-center gap-1 border-4 border-black bg-white px-3 py-2 text-xs font-black uppercase shadow-[3px_3px_0_#111]"
-                    >
-                      <LogOut className="h-3.5 w-3.5" />
-                      Logout
-                    </button>
-                  </div>
-                  {userApiKey && (
-                    <Link
-                      href="/add-case"
-                      className="inline-flex w-full items-center justify-center gap-2 border-4 border-black bg-[#FF4D8D] px-3 py-2 text-xs font-black uppercase shadow-[3px_3px_0_#111]"
-                    >
-                      <Plus className="h-4 w-4" />
-                      Input Case
-                    </Link>
-                  )}
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleSignInWithGoogle}
-                  className="inline-flex w-full items-center justify-center gap-2 border-4 border-black bg-[#E9FF70] px-4 py-3 text-sm font-black uppercase shadow-[4px_4px_0_#111]"
-                >
-                  <LogIn className="h-4 w-4" />
-                  Login Google
-                </button>
-              )}
-
-              {profileMessage && (
-                <p className="mt-3 border-2 border-black bg-[#FFD84D] p-2 text-xs font-black">
-                  {profileMessage}
-                </p>
-              )}
-            </section>
+    <AppShell>
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
+        <header className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-sm font-medium text-blue-600">Knowledge Base</p>
+            <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">
+              Temukan solusi lebih cepat
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500 sm:text-base">
+              Cari dokumentasi dari permasalahan yang pernah ditangani oleh tim support.
+            </p>
           </div>
+          <Link
+            href="/add-case"
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
+          >
+            <Plus className="h-4 w-4" />
+            Tambah case
+          </Link>
+        </header>
 
-          <div className="mt-6 grid gap-3 lg:grid-cols-[1fr_auto]">
-            <label className="flex items-center gap-3 border-4 border-black bg-white px-4 py-3 shadow-[5px_5px_0_#111]">
-              <Search className="h-5 w-5 shrink-0" />
+        <section className="mt-8 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-col gap-3 md:flex-row">
+            <label className="relative flex-1">
+              <Search className="absolute left-3.5 top-3 h-4.5 w-4.5 text-slate-400" />
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                className="min-w-0 flex-1 bg-transparent text-sm font-bold outline-none placeholder:text-neutral-500"
-                placeholder="Cari case: pembayaran, KRS, PMB, laporan, akun..."
+                placeholder="Cari judul, masalah, atau solusi..."
+                className="w-full rounded-lg border border-slate-300 py-2.5 pl-10 pr-4 text-sm outline-none placeholder:text-slate-400"
               />
             </label>
-
-            <div className="border-4 border-black bg-[#E9FF70] px-4 py-3 text-sm font-black uppercase shadow-[5px_5px_0_#111]">
-              {filteredCases.length} solusi tersedia
-            </div>
+            <label className="relative min-w-52">
+              <SlidersHorizontal className="absolute left-3.5 top-3 h-4.5 w-4.5 text-slate-400" />
+              <select
+                value={category}
+                onChange={(event) => setCategory(event.target.value)}
+                className="w-full appearance-none rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-10 text-sm outline-none"
+              >
+                {filterCategories.map((option) => (
+                  <option key={option}>{option}</option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3.5 top-3 h-4.5 w-4.5 text-slate-400" />
+            </label>
           </div>
-        </header>
+        </section>
 
-        <div className="grid gap-5">
-          <section className="min-h-[32rem] border-4 border-black bg-[#F8F8F8] shadow-[6px_6px_0_#111] sm:shadow-[10px_10px_0_#111] lg:min-h-[42rem]">
-            <div className="border-b-4 border-black bg-white p-4">
-              <div className="flex flex-wrap gap-2">
-                {categoryOptions.map((category) => {
-                  const selected = activeCategory === category;
-
-                  return (
-                    <button
-                      key={category}
-                      type="button"
-                      onClick={() => setActiveCategory(category)}
-                      className={`border-4 border-black px-3 py-2 text-xs font-black uppercase shadow-[4px_4px_0_#111] transition hover:-translate-x-1 hover:-translate-y-1 ${
-                        selected ? 'bg-[#3DD6FF]' : 'bg-white'
-                      }`}
-                    >
-                      {category}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="min-h-[28rem] overflow-y-auto p-3 sm:p-4 lg:max-h-[calc(100vh-19rem)] lg:min-h-[34rem]">
-              {!isConfigLoading && !hasSupabaseConfig(supabaseConfig) && (
-                <p className="mb-4 border-4 border-black bg-[#FFD84D] p-3 text-sm font-bold shadow-[5px_5px_0_#111]">
-                  Supabase belum dikonfigurasi. Isi NEXT_PUBLIC_SUPABASE_URL
-                  dan NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY di Cloudflare
-                  Variables, lalu redeploy.
-                </p>
-              )}
-
-              {filteredCases.length === 0 ? (
-                <div className="grid h-80 place-items-center border-4 border-dashed border-black bg-white">
-                  <div className="max-w-xs text-center">
-                    <div className="mx-auto mb-4 grid h-14 w-14 place-items-center border-4 border-black bg-[#3DD6FF] shadow-[6px_6px_0_#111]">
-                      <Wrench className="h-7 w-7" />
-                    </div>
-                    <h2 className="text-xl font-black uppercase">
-                      Solusi belum ketemu
-                    </h2>
-                    <p className="mt-2 text-sm font-bold">
-                      Coba kata kunci lain atau tanyakan ke AI support di panel
-                      kanan.
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <ul className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                  {filteredCases.map((c) => {
-                    const category = getCategoryMeta(c.category);
-                    const CategoryIcon = category.icon;
-                    const canEdit = Boolean(user && c.created_by_id === user.id);
-
-                    return (
-                      <li
-                        key={c.id}
-                        className="overflow-hidden border-4 border-black bg-white shadow-[5px_5px_0_#111] sm:shadow-[7px_7px_0_#111]"
-                      >
-                        {c.error_image_url ? (
-                          <a
-                            href={c.error_image_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="block aspect-[16/10] overflow-hidden border-b-2 border-black bg-white"
-                          >
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={c.error_image_url}
-                              alt={`Screenshot error untuk ${c.title}`}
-                              className="h-full w-full object-cover"
-                            />
-                          </a>
-                        ) : (
-                          <div className="grid aspect-[16/10] place-items-center border-b-2 border-black bg-[#3DD6FF]">
-                            <div className="text-center">
-                              <div className="mx-auto mb-3 grid h-14 w-14 place-items-center border-2 border-black bg-white shadow-[3px_3px_0_#111]">
-                                <MessageSquareText className="h-7 w-7 text-[#2563EB]" />
-                              </div>
-                              <p className="text-xs font-black uppercase text-[#2563EB]">
-                                Gambar belum tersedia
-                              </p>
-                            </div>
-                          </div>
-                        )}
-
-                        <div className="p-4">
-                          <div className="mb-3 flex items-center justify-between gap-3">
-                            <span
-                              className={`inline-flex min-w-0 items-center gap-1.5 border-2 border-black px-2.5 py-1 text-xs font-black uppercase shadow-[3px_3px_0_#111] ${category.className}`}
-                            >
-                              <CategoryIcon className="h-3.5 w-3.5 shrink-0" />
-                              <span className="truncate">
-                                {c.category ?? 'Lain-lain'}
-                              </span>
-                            </span>
-                            {canEdit && (
-                              <button
-                                type="button"
-                                onClick={() => handleEditCase(c)}
-                                className="inline-flex shrink-0 items-center gap-1 border-2 border-black bg-[#3DD6FF] px-2.5 py-1 text-xs font-black uppercase shadow-[3px_3px_0_#111]"
-                              >
-                                <Pencil className="h-3.5 w-3.5" />
-                                Edit
-                              </button>
-                            )}
-                          </div>
-
-                          <h3 className="line-clamp-2 text-lg font-black leading-snug">
-                            {c.title}
-                          </h3>
-
-                          <p className="mt-3 line-clamp-4 text-sm font-bold leading-6 text-neutral-500">
-                            {c.error_description}
-                          </p>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-          </section>
-
-          <section
-            className={`bottom-4 right-4 z-50 h-[min(42rem,calc(100vh-2rem))] w-[calc(100vw-2rem)] max-w-md flex-col border-4 border-black bg-[#111] shadow-[6px_6px_0_#FF4D8D] sm:bottom-6 sm:right-6 sm:shadow-[10px_10px_0_#FF4D8D] ${
-              isChatOpen ? 'fixed flex' : 'hidden'
-            }`}
-          >
-            <div className="border-b-4 border-black bg-[#3DD6FF] px-5 py-5 text-black">
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="grid h-12 w-12 place-items-center border-4 border-black bg-[#E9FF70] shadow-[5px_5px_0_#111]">
-                    <Bot className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-black uppercase sm:text-xl">
-                      Tanya AI Support
-                    </h2>
-                    <p className="text-sm font-bold">
-                      Jelaskan masalahmu, AI bantu cari solusi dari knowledge
-                      base.
-                    </p>
-                  </div>
-                </div>
-                <div className="hidden border-2 border-black bg-white px-3 py-1 text-xs font-black uppercase shadow-[3px_3px_0_#111] sm:block">
-                  {user && userApiKey ? 'AI Ready' : 'Login Required'}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIsChatOpen(false)}
-                  className="grid h-9 w-9 shrink-0 place-items-center border-2 border-black bg-white text-black shadow-[3px_3px_0_#111]"
-                  aria-label="Tutup chat AI"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-
-            <div className="flex-1 space-y-4 overflow-y-auto bg-[#202020] p-4">
-              {!user && (
-                <div className="grid h-full min-h-80 place-items-center">
-                  <div className="max-w-md border-4 border-black bg-white p-6 text-center shadow-[8px_8px_0_#3DD6FF]">
-                    <div className="mx-auto mb-5 grid h-16 w-16 place-items-center border-4 border-black bg-[#FFB000] shadow-[5px_5px_0_#111]">
-                      <LogIn className="h-8 w-8" />
-                    </div>
-                    <h3 className="text-xl font-black uppercase sm:text-2xl">
-                      Login dulu
-                    </h3>
-                    <p className="mt-3 text-sm font-bold leading-6">
-                      AI chat aktif setelah kamu login Google dan menyimpan
-                      Gemini API key di profil.
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {user && !userApiKey && (
-                <div className="grid h-full min-h-80 place-items-center">
-                  <div className="max-w-md border-4 border-black bg-[#FFD84D] p-6 text-center shadow-[8px_8px_0_#3DD6FF]">
-                    <div className="mx-auto mb-5 grid h-16 w-16 place-items-center border-4 border-black bg-white shadow-[5px_5px_0_#111]">
-                      <KeyRound className="h-8 w-8" />
-                    </div>
-                    <h3 className="text-xl font-black uppercase sm:text-2xl">
-                      Set API key di profil
-                    </h3>
-                    <p className="mt-3 text-sm font-bold leading-6">
-                      Isi Gemini API key di panel Profil Login supaya AI bisa
-                      menjawab dengan key milik user yang sedang login.
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {user && userApiKey && messages.length === 0 && (
-                <div className="grid h-full min-h-80 place-items-center">
-                  <div className="max-w-md border-4 border-black bg-white p-6 text-center shadow-[8px_8px_0_#3DD6FF]">
-                    <div className="mx-auto mb-5 grid h-16 w-16 place-items-center border-4 border-black bg-[#FFB000] shadow-[5px_5px_0_#111]">
-                      <Sparkles className="h-8 w-8" />
-                    </div>
-                    <h3 className="text-xl font-black uppercase sm:text-2xl">
-                      Langsung tanya aja
-                    </h3>
-                    <p className="mt-3 text-sm font-bold leading-6">
-                      Contoh: tagihan mahasiswa tidak muncul, gagal cetak KRS,
-                      atau laporan tidak bisa diekspor.
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {messages.map((m) => (
-                <div
-                  key={m.id}
-                  className={`flex ${
-                    m.role === 'user' ? 'justify-end' : 'justify-start'
-                  }`}
-                >
-                  <div
-                    className={`max-w-[85%] border-4 border-black px-4 py-3 text-sm font-bold leading-6 shadow-[6px_6px_0_#000] ${
-                      m.role === 'user'
-                        ? 'bg-[#E9FF70] text-black'
-                        : 'bg-white text-black'
-                    }`}
-                  >
-                    <div className="whitespace-pre-wrap">
-                      {getMessageText(m)}
-                    </div>
-                  </div>
-                </div>
-              ))}
-
-              {isLoading && (
-                <div className="inline-flex items-center gap-2 border-4 border-black bg-[#FFD84D] px-3 py-2 text-sm font-black shadow-[5px_5px_0_#000]">
-                  <span className="h-3 w-3 animate-pulse rounded-full border-2 border-black bg-[#FF4D8D]" />
-                  AI sedang berpikir...
-                </div>
-              )}
-
-              {error && (
-                <div className="border-4 border-black bg-[#FF4D8D] p-3 text-sm font-black text-black shadow-[5px_5px_0_#000]">
-                  Chat error: {error.message}
-                </div>
-              )}
-            </div>
-
-            <form
-              onSubmit={handleSubmit}
-              className="border-t-4 border-black bg-[#FFB000] p-4"
-            >
-              <div className="flex items-center gap-2 border-4 border-black bg-white p-2 shadow-[7px_7px_0_#111]">
-                <input
-                  type="text"
-                  value={input}
-                  onChange={(event) => setInput(event.target.value)}
-                  disabled={!user || !userApiKey}
-                  placeholder={
-                    user && userApiKey
-                      ? 'Tulis masalah yang kamu alami...'
-                      : 'Login dan set API key di profil dulu...'
-                  }
-                  className="min-w-0 flex-1 border-0 bg-white px-3 py-2 text-sm font-bold text-black outline-none placeholder:text-neutral-500"
-                />
-                <button
-                  type="submit"
-                  disabled={isLoading || !input.trim() || !user || !userApiKey}
-                  className="grid h-11 w-11 shrink-0 place-items-center border-4 border-black bg-[#3DD6FF] text-black shadow-[4px_4px_0_#111] transition hover:-translate-x-1 hover:-translate-y-1 hover:shadow-[7px_7px_0_#111] disabled:translate-x-0 disabled:translate-y-0 disabled:bg-neutral-300 disabled:shadow-none"
-                  aria-label="Kirim pesan"
-                >
-                  <ArrowUp className="h-5 w-5" />
-                </button>
-              </div>
-            </form>
-          </section>
+        <div className="mt-7 flex items-center justify-between">
+          <h2 className="text-base font-semibold text-slate-900">Daftar case</h2>
+          {!loading && !error && (
+            <p className="text-sm text-slate-500">{filteredCases.length} solusi ditemukan</p>
+          )}
         </div>
+
+        {!loading && !hasSupabaseConfig(config) && (
+          <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-800">
+            Supabase belum dikonfigurasi. Tambahkan environment variable Supabase untuk menampilkan knowledge base.
+          </div>
+        )}
+
+        {loading ? (
+          <div className="mt-5 grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+            {[0, 1, 2, 3, 4, 5].map((item) => (
+              <div key={item} className="h-80 animate-pulse rounded-xl border border-slate-200 bg-white" />
+            ))}
+          </div>
+        ) : error ? (
+          <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-5">
+            <p className="font-medium text-red-800">Case belum dapat dimuat</p>
+            <p className="mt-1 text-sm text-red-700">{error}</p>
+          </div>
+        ) : filteredCases.length === 0 ? (
+          <div className="mt-5 flex min-h-72 flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center">
+            <div className="grid h-12 w-12 place-items-center rounded-xl bg-slate-100 text-slate-500">
+              <BookOpen className="h-5 w-5" />
+            </div>
+            <h2 className="mt-4 font-semibold text-slate-900">Solusi belum ditemukan</h2>
+            <p className="mt-2 max-w-sm text-sm leading-6 text-slate-500">
+              Coba kata kunci atau kategori lain, atau tanyakan masalahmu melalui AI Support.
+            </p>
+          </div>
+        ) : (
+          <div className="mt-5 grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+            {filteredCases.map((caseItem) => (
+              <CaseCard key={caseItem.id} caseItem={caseItem} />
+            ))}
+          </div>
+        )}
       </div>
-
-      {editingCase && (
-        <div className="fixed inset-0 z-[60] grid place-items-center bg-black/70 p-4 backdrop-blur-sm">
-          <form
-            onSubmit={handleUpdateCase}
-            className="max-h-[calc(100vh-2rem)] w-full max-w-3xl overflow-y-auto border-4 border-black bg-[#111] p-4 shadow-[6px_6px_0_#FF4D8D] sm:p-5"
-          >
-            <div className="mb-5 flex items-start justify-between gap-4">
-              <div>
-                <div className="mb-2 inline-flex items-center gap-2 border-2 border-black bg-[#3DD6FF] px-3 py-1 text-xs font-black uppercase shadow-[3px_3px_0_#111]">
-                  <Pencil className="h-3.5 w-3.5" />
-                  Maintenance Case
-                </div>
-                <h2 className="text-2xl font-black uppercase leading-tight">
-                  Edit Case Milikmu
-                </h2>
-                <p className="mt-2 text-sm font-bold text-neutral-500">
-                  Kamu hanya bisa mengedit case yang kamu upload sendiri.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setEditingCase(null)}
-                className="grid h-10 w-10 shrink-0 place-items-center border-2 border-black bg-white shadow-[3px_3px_0_#111]"
-                aria-label="Tutup edit case"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="block">
-                <span className="mb-2 block text-sm font-black uppercase">
-                  Judul Case
-                </span>
-                <input
-                  value={editingCase.title}
-                  onChange={(event) =>
-                    setEditingCase({
-                      ...editingCase,
-                      title: event.target.value,
-                    })
-                  }
-                  required
-                  className="w-full border-4 border-black bg-white p-3 text-sm font-bold outline-none"
-                />
-              </label>
-
-              <label className="block">
-                <span className="mb-2 block text-sm font-black uppercase">
-                  Kategori
-                </span>
-                <select
-                  value={editingCase.category}
-                  onChange={(event) =>
-                    setEditingCase({
-                      ...editingCase,
-                      category: event.target.value,
-                    })
-                  }
-                  className="w-full border-4 border-black bg-white p-3 text-sm font-bold outline-none"
-                >
-                  {categoryOptions
-                    .filter((category) => category !== 'Semua')
-                    .map((category) => (
-                      <option key={category} value={category}>
-                        {category}
-                      </option>
-                    ))}
-                </select>
-              </label>
-            </div>
-
-            <label className="mt-4 block">
-              <span className="mb-2 block text-sm font-black uppercase">
-                Link Gambar Error
-              </span>
-              <input
-                type="url"
-                value={editingCase.error_image_url}
-                onChange={(event) =>
-                  setEditingCase({
-                    ...editingCase,
-                    error_image_url: event.target.value,
-                  })
-                }
-                className="w-full border-4 border-black bg-white p-3 text-sm font-bold outline-none"
-                placeholder="https://..."
-              />
-            </label>
-
-            <label className="mt-4 block">
-              <span className="mb-2 block text-sm font-black uppercase">
-                Deskripsi Error
-              </span>
-              <textarea
-                value={editingCase.error_description}
-                onChange={(event) =>
-                  setEditingCase({
-                    ...editingCase,
-                    error_description: event.target.value,
-                  })
-                }
-                required
-                rows={5}
-                className="w-full resize-none border-4 border-black bg-white p-3 text-sm font-bold leading-6 outline-none"
-              />
-            </label>
-
-            <label className="mt-4 block">
-              <span className="mb-2 block text-sm font-black uppercase">
-                Solusi
-              </span>
-              <textarea
-                value={editingCase.solution}
-                onChange={(event) =>
-                  setEditingCase({
-                    ...editingCase,
-                    solution: event.target.value,
-                  })
-                }
-                required
-                rows={5}
-                className="w-full resize-none border-4 border-black bg-white p-3 text-sm font-bold leading-6 outline-none"
-              />
-            </label>
-
-            {editMessage && (
-              <div
-                className={`mt-4 border-4 border-black p-3 text-sm font-black shadow-[4px_4px_0_#111] ${
-                  editStatus === 'success' ? 'bg-[#3DD6FF]' : 'bg-[#FF4D8D]'
-                }`}
-              >
-                {editMessage}
-              </div>
-            )}
-
-            <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end">
-              <button
-                type="button"
-                onClick={() => setEditingCase(null)}
-                className="border-4 border-black bg-white px-5 py-3 text-sm font-black uppercase shadow-[4px_4px_0_#111]"
-              >
-                Batal
-              </button>
-              <button
-                type="submit"
-                disabled={editStatus === 'saving'}
-                className="border-4 border-black bg-[#3DD6FF] px-5 py-3 text-sm font-black uppercase shadow-[4px_4px_0_#111] disabled:bg-neutral-300"
-              >
-                {editStatus === 'saving' ? 'Menyimpan...' : 'Simpan Perubahan'}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      <button
-        type="button"
-        onClick={() => setIsChatOpen(true)}
-        className="fixed bottom-4 right-4 z-40 inline-flex items-center gap-2 border-4 border-black bg-[#3DD6FF] px-4 py-3 text-sm font-black uppercase text-black shadow-[5px_5px_0_#111] sm:bottom-6 sm:right-6"
-      >
-        <MessageCircle className="h-5 w-5" />
-        Tanya AI
-      </button>
-    </main>
+    </AppShell>
   );
 }
