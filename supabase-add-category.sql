@@ -6,6 +6,8 @@ alter table public.cases
 add column if not exists error_description text,
 add column if not exists solution text,
 add column if not exists resolution_steps text,
+add column if not exists module_name text,
+add column if not exists menu_name text,
 add column if not exists created_by_id uuid,
 add column if not exists created_by_email text,
 add column if not exists error_image_url text,
@@ -59,6 +61,14 @@ to authenticated
 using (auth.uid() = created_by_id)
 with check (auth.uid() = created_by_id);
 
+drop policy if exists "cases_owner_delete" on public.cases;
+
+create policy "cases_owner_delete"
+on public.cases
+for delete
+to authenticated
+using (auth.uid() = created_by_id);
+
 insert into storage.buckets (id, name, public)
 values ('case-images', 'case-images', true)
 on conflict (id) do update set public = true;
@@ -76,6 +86,20 @@ create policy "case_images_authenticated_upload"
 on storage.objects
 for insert
 to authenticated
-with check (bucket_id = 'case-images');
+with check (
+  bucket_id = 'case-images'
+  and (storage.foldername(name))[1] = auth.uid()::text
+);
+
+drop policy if exists "case_images_owner_delete" on storage.objects;
+
+create policy "case_images_owner_delete"
+on storage.objects
+for delete
+to authenticated
+using (
+  bucket_id = 'case-images'
+  and (storage.foldername(name))[1] = auth.uid()::text
+);
 
 notify pgrst, 'reload schema';

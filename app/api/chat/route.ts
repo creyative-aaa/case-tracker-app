@@ -55,7 +55,7 @@ export async function POST(request: Request) {
     const { data } = await supabase
       .from('cases')
       .select(
-        'title,category,error_description,error_image_url,solution,created_by_email',
+        'title,category,module_name,menu_name,error_description,error_image_url,solution,created_by_email',
       )
       .order('created_at', { ascending: false })
       .limit(20);
@@ -64,7 +64,7 @@ export async function POST(request: Request) {
       data
         ?.map(
           (item) =>
-            `Judul: ${item.title}\nKategori: ${item.category ?? '-'}\nUploader: ${item.created_by_email ?? '-'}\nError: ${item.error_description}\nGambar Error: ${item.error_image_url ?? '-'}\nSolusi: ${item.solution}`,
+            `Judul: ${item.title}\nKategori: ${item.category ?? '-'}\nModul: ${item.module_name ?? '-'}\nMenu: ${item.menu_name ?? '-'}\nUploader: ${item.created_by_email ?? '-'}\nError: ${item.error_description}\nGambar Error: ${item.error_image_url ?? '-'}\nSolusi: ${item.solution}`,
         )
         .join('\n\n') ?? '';
   }

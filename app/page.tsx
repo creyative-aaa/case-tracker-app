@@ -56,6 +56,8 @@ export default function Home() {
     const matchesQuery =
       !query ||
       caseItem.title.toLowerCase().includes(query) ||
+      caseItem.module_name?.toLowerCase().includes(query) ||
+      caseItem.menu_name?.toLowerCase().includes(query) ||
       caseItem.error_description.toLowerCase().includes(query) ||
       caseItem.solution.toLowerCase().includes(query);
     const matchesCategory =

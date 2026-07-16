@@ -15,6 +15,8 @@ export async function POST(request: Request) {
   const {
     title,
     category,
+    module_name,
+    menu_name,
     error_description,
     error_image_url,
     solution,
@@ -40,6 +42,8 @@ export async function POST(request: Request) {
     .insert({
       title,
       category,
+      module_name: module_name || null,
+      menu_name: menu_name || null,
       error_description,
       error_image_url,
       solution: resolvedSolution,

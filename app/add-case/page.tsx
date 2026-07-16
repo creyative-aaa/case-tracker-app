@@ -30,6 +30,8 @@ export default function AddCasePage() {
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<string>(CASE_CATEGORIES[0]);
   const [customCategory, setCustomCategory] = useState('');
+  const [moduleName, setModuleName] = useState('');
+  const [menuName, setMenuName] = useState('');
   const [errorDescription, setErrorDescription] = useState('');
   const [errorImageUrl, setErrorImageUrl] = useState('');
   const [errorImageFile, setErrorImageFile] = useState<File | null>(null);
@@ -127,6 +129,8 @@ export default function AddCasePage() {
     const { error } = await supabase.from('cases').insert({
       title: title.trim(),
       category: selectedCategory,
+      module_name: moduleName.trim(),
+      menu_name: menuName.trim(),
       error_description: errorDescription.trim(),
       error_image_url: imageUrl || null,
       solution: solution.trim(),
@@ -204,6 +208,16 @@ export default function AddCasePage() {
                     <input required value={customCategory} onChange={(event) => setCustomCategory(event.target.value)} placeholder="Contoh: LMS" className="mt-2 w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm outline-none" />
                   </label>
                 )}
+                <label>
+                  <span className="text-sm font-medium text-slate-700">Modul sistem</span>
+                  <input required value={moduleName} onChange={(event) => setModuleName(event.target.value)} placeholder="Contoh: Keuangan Mahasiswa" className="mt-2 w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm outline-none" />
+                  <span className="mt-1.5 block text-xs text-slate-500">Kelompok fitur utama tempat proses dijalankan.</span>
+                </label>
+                <label>
+                  <span className="text-sm font-medium text-slate-700">Menu sistem</span>
+                  <input required value={menuName} onChange={(event) => setMenuName(event.target.value)} placeholder="Contoh: Tagihan &gt; Generate Tagihan" className="mt-2 w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm outline-none" />
+                  <span className="mt-1.5 block text-xs text-slate-500">Tuliskan menu atau submenu yang harus dibuka.</span>
+                </label>
               </div>
             </section>
 

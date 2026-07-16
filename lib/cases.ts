@@ -2,6 +2,8 @@ export type CaseItem = {
   id: string | number;
   title: string;
   category: string | null;
+  module_name: string | null;
+  menu_name: string | null;
   error_description: string;
   error_image_url: string | null;
   solution: string;
@@ -15,11 +17,13 @@ export type EditableCase = Pick<
   'id' | 'title' | 'error_description' | 'solution'
 > & {
   category: string;
+  module_name: string;
+  menu_name: string;
   error_image_url: string;
 };
 
 export const CASE_SELECT =
-  'id,title,category,error_description,error_image_url,solution,created_by_id,created_by_email,created_at';
+  'id,title,category,module_name,menu_name,error_description,error_image_url,solution,created_by_id,created_by_email,created_at';
 
 export const CASE_CATEGORIES = [
   'Akademik',

@@ -83,6 +83,16 @@ export function CaseDetail({ caseId }: { caseId: string }) {
               </div>
               <h1 className="mt-5 max-w-3xl text-2xl font-semibold leading-tight tracking-tight text-slate-950 sm:text-4xl">{caseItem.title}</h1>
               <p className="mt-3 text-sm text-slate-500">Dokumentasi solusi dari Knowledge Base ALDI Support</p>
+              {(caseItem.module_name || caseItem.menu_name) && (
+                <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Lokasi di sistem</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-sm font-medium text-slate-800">
+                    {caseItem.module_name && <span>{caseItem.module_name}</span>}
+                    {caseItem.module_name && caseItem.menu_name && <span className="text-slate-400">/</span>}
+                    {caseItem.menu_name && <span>{caseItem.menu_name}</span>}
+                  </div>
+                </div>
+              )}
             </header>
 
             <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_320px]">

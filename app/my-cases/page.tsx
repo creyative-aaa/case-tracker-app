@@ -12,6 +12,8 @@ import {
   Pencil,
   Plus,
   Search,
+  Trash2,
+  AlertTriangle,
   X,
 } from 'lucide-react';
 import type { User } from '@supabase/supabase-js';
@@ -40,7 +42,11 @@ export default function MyCasesPage() {
   const [queryError, setQueryError] = useState('');
   const [search, setSearch] = useState('');
   const [createdNotice, setCreatedNotice] = useState(false);
+  const [actionNotice, setActionNotice] = useState('');
   const [editingCase, setEditingCase] = useState<EditableCase | null>(null);
+  const [deletingCase, setDeletingCase] = useState<CaseItem | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteMessage, setDeleteMessage] = useState('');
   const [saving, setSaving] = useState(false);
   const [editMessage, setEditMessage] = useState('');
   const supabase = useMemo(() => createClient(config), [config]);
@@ -112,6 +118,8 @@ export default function MyCasesPage() {
       id: caseItem.id,
       title: caseItem.title,
       category: caseItem.category ?? 'Lain-lain',
+      module_name: caseItem.module_name ?? '',
+      menu_name: caseItem.menu_name ?? '',
       error_description: caseItem.error_description,
       error_image_url: caseItem.error_image_url ?? '',
       solution: caseItem.solution,
@@ -130,6 +138,8 @@ export default function MyCasesPage() {
       .update({
         title: editingCase.title.trim(),
         category: editingCase.category,
+        module_name: editingCase.module_name.trim(),
+        menu_name: editingCase.menu_name.trim(),
         error_description: editingCase.error_description.trim(),
         error_image_url: editingCase.error_image_url.trim() || null,
         solution: editingCase.solution.trim(),
@@ -151,6 +161,8 @@ export default function MyCasesPage() {
               ...caseItem,
               title: editingCase.title.trim(),
               category: editingCase.category,
+              module_name: editingCase.module_name.trim(),
+              menu_name: editingCase.menu_name.trim(),
               error_description: editingCase.error_description.trim(),
               error_image_url: editingCase.error_image_url.trim() || null,
               solution: editingCase.solution.trim(),
@@ -160,6 +172,42 @@ export default function MyCasesPage() {
     );
     setSaving(false);
     setEditingCase(null);
+    setActionNotice('Case berhasil diperbarui.');
+  };
+
+  const deleteCase = async () => {
+    if (!supabase || !deletingCase || !user) return;
+    if (deletingCase.created_by_id !== user.id) {
+      setDeleteMessage('Kamu hanya dapat menghapus case yang kamu buat sendiri.');
+      return;
+    }
+
+    setDeleting(true);
+    setDeleteMessage('');
+    const { data, error } = await supabase
+      .from('cases')
+      .delete()
+      .eq('id', deletingCase.id)
+      .eq('created_by_id', user.id)
+      .select('id')
+      .maybeSingle();
+
+    if (error || !data) {
+      setDeleteMessage(error?.message ?? 'Case tidak ditemukan atau kamu tidak memiliki izin untuk menghapusnya.');
+      setDeleting(false);
+      return;
+    }
+
+    const imagePath = getCaseImagePath(deletingCase.error_image_url);
+    if (imagePath) {
+      await supabase.storage.from('case-images').remove([imagePath]);
+    }
+
+    setCases((current) => current.filter((caseItem) => caseItem.id !== deletingCase.id));
+    setDeleting(false);
+    setDeletingCase(null);
+    setCreatedNotice(false);
+    setActionNotice('Case berhasil dihapus.');
   };
 
   const filteredCases = cases.filter((caseItem) => {
@@ -167,6 +215,8 @@ export default function MyCasesPage() {
     return (
       !normalizedSearch ||
       caseItem.title.toLowerCase().includes(normalizedSearch) ||
+      caseItem.module_name?.toLowerCase().includes(normalizedSearch) ||
+      caseItem.menu_name?.toLowerCase().includes(normalizedSearch) ||
       caseItem.error_description.toLowerCase().includes(normalizedSearch)
     );
   });
@@ -190,6 +240,13 @@ export default function MyCasesPage() {
           <div className="mt-6 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
             <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
             Case berhasil ditambahkan dan sudah tersedia di knowledge base.
+          </div>
+        )}
+
+        {actionNotice && (
+          <div className="mt-6 flex items-start justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+            <span className="flex items-start gap-3"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />{actionNotice}</span>
+            <button type="button" onClick={() => setActionNotice('')} aria-label="Tutup notifikasi"><X className="h-4 w-4" /></button>
           </div>
         )}
 
@@ -248,10 +305,12 @@ export default function MyCasesPage() {
                       </div>
                       <h3 className="mt-2 truncate font-semibold text-slate-900">{caseItem.title}</h3>
                       <p className="mt-1 line-clamp-1 text-sm text-slate-500">{caseItem.error_description}</p>
+                      {(caseItem.module_name || caseItem.menu_name) && <p className="mt-1 truncate text-xs font-medium text-slate-500">{[caseItem.module_name, caseItem.menu_name].filter(Boolean).join(' · ')}</p>}
                     </div>
-                    <div className="flex shrink-0 items-center gap-2">
+                    <div className="flex shrink-0 flex-wrap items-center gap-2">
                       <Link href={`/cases/${caseItem.id}`} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Lihat <ArrowUpRight className="h-4 w-4" /></Link>
                       <button type="button" onClick={() => openEdit(caseItem)} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"><Pencil className="h-4 w-4" /> Edit</button>
+                      <button type="button" onClick={() => { setDeletingCase(caseItem); setDeleteMessage(''); }} className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" /> Hapus</button>
                     </div>
                   </article>
                 ))}
@@ -272,6 +331,8 @@ export default function MyCasesPage() {
               <label className="sm:col-span-2"><span className="text-sm font-medium text-slate-700">Judul</span><input required value={editingCase.title} onChange={(event) => setEditingCase({ ...editingCase, title: event.target.value })} className="mt-2 w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm outline-none" /></label>
               <label><span className="text-sm font-medium text-slate-700">Kategori</span><select value={editingCase.category} onChange={(event) => setEditingCase({ ...editingCase, category: event.target.value })} className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm outline-none">{!CASE_CATEGORIES.includes(editingCase.category as (typeof CASE_CATEGORIES)[number]) && <option>{editingCase.category}</option>}{CASE_CATEGORIES.map((option) => <option key={option}>{option}</option>)}</select></label>
               <label><span className="text-sm font-medium text-slate-700">URL gambar</span><input type="url" value={editingCase.error_image_url} onChange={(event) => setEditingCase({ ...editingCase, error_image_url: event.target.value })} placeholder="https://..." className="mt-2 w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm outline-none" /></label>
+              <label><span className="text-sm font-medium text-slate-700">Modul sistem</span><input required value={editingCase.module_name} onChange={(event) => setEditingCase({ ...editingCase, module_name: event.target.value })} placeholder="Contoh: Keuangan Mahasiswa" className="mt-2 w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm outline-none" /></label>
+              <label><span className="text-sm font-medium text-slate-700">Menu sistem</span><input required value={editingCase.menu_name} onChange={(event) => setEditingCase({ ...editingCase, menu_name: event.target.value })} placeholder="Contoh: Tagihan > Generate Tagihan" className="mt-2 w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm outline-none" /></label>
               <label className="sm:col-span-2"><span className="text-sm font-medium text-slate-700">Deskripsi error</span><textarea required rows={5} value={editingCase.error_description} onChange={(event) => setEditingCase({ ...editingCase, error_description: event.target.value })} className="mt-2 w-full resize-y rounded-lg border border-slate-300 px-3.5 py-3 text-sm leading-6 outline-none" /></label>
               <label className="sm:col-span-2"><span className="text-sm font-medium text-slate-700">Solusi</span><textarea required rows={6} value={editingCase.solution} onChange={(event) => setEditingCase({ ...editingCase, solution: event.target.value })} className="mt-2 w-full resize-y rounded-lg border border-slate-300 px-3.5 py-3 text-sm leading-6 outline-none" /></label>
             </div>
@@ -283,6 +344,40 @@ export default function MyCasesPage() {
           </form>
         </div>
       )}
+
+      {deletingCase && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4 backdrop-blur-sm">
+          <section className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl">
+            <div className="grid h-11 w-11 place-items-center rounded-full bg-red-50 text-red-600"><AlertTriangle className="h-5 w-5" /></div>
+            <h2 className="mt-4 text-lg font-semibold text-slate-900">Hapus case?</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              <span className="font-medium text-slate-700">{deletingCase.title}</span> akan dihapus permanen dari knowledge base. Tindakan ini tidak dapat dibatalkan.
+            </p>
+            {deleteMessage && <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{deleteMessage}</p>}
+            <div className="mt-6 flex justify-end gap-3">
+              <button type="button" disabled={deleting} onClick={() => setDeletingCase(null)} className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 disabled:opacity-50">Batal</button>
+              <button type="button" disabled={deleting} onClick={deleteCase} className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-700 disabled:bg-red-300">
+                {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                {deleting ? 'Menghapus...' : 'Hapus permanen'}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </AppShell>
   );
+}
+
+function getCaseImagePath(imageUrl: string | null) {
+  if (!imageUrl) return null;
+  const marker = '/storage/v1/object/public/case-images/';
+  const markerIndex = imageUrl.indexOf(marker);
+  if (markerIndex === -1) return null;
+
+  const path = imageUrl.slice(markerIndex + marker.length).split('?')[0];
+  try {
+    return decodeURIComponent(path);
+  } catch {
+    return path;
+  }
 }

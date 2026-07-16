@@ -38,6 +38,12 @@ export function CaseCard({ caseItem }: { caseItem: CaseItem }) {
           {caseItem.error_description}
         </p>
 
+        {(caseItem.module_name || caseItem.menu_name) && (
+          <p className="mt-3 truncate text-xs font-medium text-slate-500">
+            {[caseItem.module_name, caseItem.menu_name].filter(Boolean).join(' · ')}
+          </p>
+        )}
+
         <Link
           href={`/cases/${caseItem.id}`}
           className="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold text-blue-600 hover:text-blue-700"
